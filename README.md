@@ -1,4 +1,4 @@
-# Mistral PDF-to-Markdown OCR 📄➡️📝
+# Mistral PDF-to-Markdown OCR Web App
 
 [![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)](https://www.python.org/)
