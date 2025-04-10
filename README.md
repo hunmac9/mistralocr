@@ -6,6 +6,8 @@
 
 A simple web application using Flask and the Mistral AI API to convert PDF files into Markdown documents, extracting text and images. Easily run using Docker Compose.
 
+*(Inspired by [diegomarzaa/pdf-ocr-obsidian](https://github.com/diegomarzaa/pdf-ocr-obsidian))*
+
 ## ✨ Features
 
 -   **⬆️ Upload Interface:** Simple web UI for uploading PDFs.
@@ -60,6 +62,10 @@ A simple web application using Flask and the Mistral AI API to convert PDF files
 3.  Mistral processes the PDF, returning text and images.
 4.  The app saves the text as `.md` and images in an `images/` subfolder.
 5.  Everything is zipped up for you to download.
+
+## 📜 License
+
+This project is licensed under the Mozilla Public License Version 2.0. See the [LICENSE](LICENSE) file for details.
 
 ## 🤝 Contributing
 
