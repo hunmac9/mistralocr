@@ -75,10 +75,11 @@ def process_pdf(pdf_path: Path, api_key: str, session_output_dir: Path) -> tuple
     try:
         # Check if file exceeds Mistral API limit
         if pdf_path.stat().st_size > mistral_max_mb * 1024 * 1024:
-            print(f"  PDF exceeds {mistral_max_mb}MB. Compressing before upload...")
+            print(f"  PDF exceeds {mistral_max_mb}MB. Attempting compression...")
             compressed_path = pdf_path.parent / f"{pdf_path.stem}_compressed.pdf"
             # Use Ghostscript or similar to compress PDF
             import subprocess
+            import time
             gs_cmd = [
                 "gs",
                 "-sDEVICE=pdfwrite",
@@ -91,16 +92,29 @@ def process_pdf(pdf_path: Path, api_key: str, session_output_dir: Path) -> tuple
                 str(pdf_path)
             ]
             try:
-                subprocess.run(gs_cmd, check=True)
+                print(f"    Running Ghostscript command: {' '.join(gs_cmd)}")
+                start_time = time.time()
+                subprocess.run(gs_cmd, check=True, capture_output=True) # Capture output to prevent polluting logs unless error
+                end_time = time.time()
+                print(f"    Ghostscript finished in {end_time - start_time:.2f} seconds.")
                 if compressed_path.exists() and compressed_path.stat().st_size < pdf_path.stat().st_size:
-                    print(f"  Compression successful. Using compressed file: {compressed_path.name}")
+                    print(f"    Compression successful. Original size: {pdf_path.stat().st_size / (1024*1024):.2f} MB, Compressed size: {compressed_path.stat().st_size / (1024*1024):.2f} MB. Using compressed file.")
                     pdf_path = compressed_path
+                elif compressed_path.exists():
+                     print(f"    Compression did not reduce size significantly (Original: {pdf_path.stat().st_size / (1024*1024):.2f} MB, Compressed: {compressed_path.stat().st_size / (1024*1024):.2f} MB). Using original file.")
+                     compressed_path.unlink() # Clean up useless compressed file
                 else:
-                    print("  Compression did not reduce size. Using original file.")
+                    print("    Compression failed (output file not found). Using original file.")
+            except subprocess.CalledProcessError as e:
+                print(f"    Ghostscript compression failed: {e}")
+                print(f"    Ghostscript stdout: {e.stdout.decode(errors='ignore')}")
+                print(f"    Ghostscript stderr: {e.stderr.decode(errors='ignore')}")
+                print("    Using original file.")
             except Exception as e:
-                print(f"  Compression failed: {e}. Using original file.")
+                print(f"    An unexpected error occurred during compression: {e}. Using original file.")
 
-        print(f"  Uploading {pdf_path.name} to Mistral...")
+
+        print(f"  Uploading {pdf_path.name} (size: {pdf_path.stat().st_size / (1024*1024):.2f} MB) to Mistral...")
         with open(pdf_path, "rb") as f:
             pdf_bytes = f.read()
         mistral_file = client.files.upload(
@@ -109,17 +123,19 @@ def process_pdf(pdf_path: Path, api_key: str, session_output_dir: Path) -> tuple
         uploaded_file_id = mistral_file.id # Store ID for cleanup
 
         print(f"  File uploaded (ID: {uploaded_file_id}). Getting signed URL...")
-        signed_url = client.files.get_signed_url(file_id=uploaded_file_id, expiry=60)
+        signed_url = client.files.get_signed_url(file_id=uploaded_file_id, expiry=60) # Keep expiry short
 
-        print(f"  Calling OCR API...")
+        print(f"  Calling Mistral OCR API for file ID {uploaded_file_id} (this may take a while)...")
+        start_time = time.time()
         ocr_response = client.ocr.process(
             document=DocumentURLChunk(document_url=signed_url.url),
-            model="mistral-ocr-latest",
-            include_image_base64=True
+            model="mistral-ocr-latest", # Consider making model configurable if needed
+            include_image_base64=True # Keep this True for image extraction
         )
-        print(f"  OCR processing complete for {pdf_path.name}.")
+        end_time = time.time()
+        print(f"  OCR processing complete for {pdf_path.name} in {end_time - start_time:.2f} seconds.")
 
-        # Optional: Save Raw OCR Response
+        # Save Raw OCR Response (Mandatory now)
         ocr_json_path = pdf_output_dir / "ocr_response.json"
         try:
             with open(ocr_json_path, "w", encoding="utf-8") as json_file:
@@ -330,7 +346,7 @@ def handle_process():
                 "zip_filename": zip_filename,
                 "download_url": download_url,
                 "preview": {
-                    "markdown": markdown_content,
+                    # "markdown": markdown_content, # Removed - Markdown is only in the ZIP now
                     "images": image_filenames,
                     "pdf_base": processed_pdf_base # Use the sanitized base name returned by process_pdf
                 }
