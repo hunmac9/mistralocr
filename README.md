@@ -1,12 +1,14 @@
-# Mistral PDF-to-Markdown OCR 📄➡️📝
+# Mistral PDF-to-Markdown OCR Web App
 
 [![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-WebApp-green?logo=flask)](https://flask.palletsprojects.com/)
 
-A simple web application using Flask and the Mistral AI API to convert PDF files into Markdown documents, extracting text and images. Easily run using Docker Compose.
+A simple web application using Flask and the Mistral AI API to convert PDF files into standard Markdown documents, extracting text and images. Easily run using Docker Compose.
 
-*(Inspired by [diegomarzaa/pdf-ocr-obsidian](https://github.com/diegomarzaa/pdf-ocr-obsidian))*
+*Inspired by an Obsidian version at [diegomarzaa/pdf-ocr-obsidian](https://github.com/diegomarzaa/pdf-ocr-obsidian)*
+
+*This version is specifically adapted to import to a moddified version of Outline, but should work with most markdown importers*
 
 ## ✨ Features
 
@@ -15,7 +17,7 @@ A simple web application using Flask and the Mistral AI API to convert PDF files
 -   **📄 Standard Markdown:** Outputs clean Markdown with relative image links.
 -   **🖼️ Image Handling:** Saves extracted images alongside the Markdown file using original filenames.
 -   **📦 Packaged Output:** Delivers results (Markdown, images, raw JSON response) as a downloadable ZIP archive.
--   **⚙️ Configurable Upload Limit:** Set maximum PDF upload size via environment variable (default 100MB).
+-   **⚙️ Configurable Upload Limit:** Set maximum PDF upload size via environment variable (default 100MB); automatic compression for PDFs over Mistral's 50mb limit.
 -   **🐳 Dockerized:** Ready to run with Docker Compose.
 
 ## 🚀 Getting Started
@@ -29,8 +31,8 @@ A simple web application using Flask and the Mistral AI API to convert PDF files
 
 1.  **Clone the Repository:**
     ```bash
-    git clone <your-repository-url>
-    cd <repository-directory>
+    git clone https://github.com/hunmac9/mistralocr.git
+    cd mistralocr
     ```
 
 2.  **Create `.env` File:**
@@ -39,7 +41,7 @@ A simple web application using Flask and the Mistral AI API to convert PDF files
     # .env
     MISTRAL_API_KEY=your_actual_api_key_here
     ```
-    *(This file is git-ignored, keeping your key safe!)*
+    *(This will be used by default unless the user provides their own, don't set your spend limits too high if the app is publicly accessible!)*
 
 3.  **Launch with Docker Compose:**
     ```bash
@@ -58,16 +60,12 @@ A simple web application using Flask and the Mistral AI API to convert PDF files
 
 ## ⚙️ How It Works
 
-1.  Upload PDFs via the web UI.
-2.  The Flask backend sends files to the Mistral OCR API.
-3.  Mistral processes the PDF, returning text and images.
-4.  The app saves the text as `.md` and images in an `images/` subfolder.
-5.  Everything is zipped up for you to download.
+1.  User uploads PDF(s) via the web UI.
+2.  The Flask backend compresses PDFs over 50mb, sends compressed file to the Mistral OCR API.
+3.  Mistral processes the PDF, returning markdown formatted text and images.
+4.  The app saves the markdown, json, and images in a folder. 
+5.  Everything is zipped up and served to the web UI.
 
 ## 📜 License
 
 This project is licensed under the Mozilla Public License Version 2.0. See the [LICENSE](LICENSE) file for details.
-
-## 🤝 Contributing
-
-Contributions, issues, and feature requests are welcome!
