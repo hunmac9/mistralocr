@@ -345,8 +345,17 @@ def handle_process():
             job_id = str(uuid4())
             with jobs_lock:
                 jobs[job_id] = {"status": "queued", "download_url": None, "error": None}
-            # Start background thread
-            t = threading.Thread(target=background_process_job, args=(job_id, f, api_key_to_use))
+
+            # Save uploaded file immediately before starting background thread
+            session_id = str(uuid4())
+            session_upload_dir = UPLOAD_FOLDER / session_id
+            session_upload_dir.mkdir(parents=True, exist_ok=True)
+            filename_sanitized = secure_filename(f.filename)
+            temp_pdf_path = session_upload_dir / filename_sanitized
+            f.save(temp_pdf_path)
+
+            # Start background thread, pass path and session_id
+            t = threading.Thread(target=background_process_job, args=(job_id, temp_pdf_path, api_key_to_use, session_id))
             t.start()
             return jsonify({"job_id": job_id, "status": "queued"}), 202
 
