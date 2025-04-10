@@ -2,17 +2,14 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --bg-color: #0e0e0e;
+  --bg-color: #121212;
   --text-color: #f0f0f0;
   --text-secondary-color: #bbbbbb;
   --primary-color: #00ffe7;
   --primary-hover-color: #00ccb8;
   --error-color: #ff4c4c;
   --success-color: #4caf50;
-  --shadow-color: rgba(0, 0, 0, 0.3);
-  --glass-bg: rgba(255, 255, 255, 0.05);
-  --glass-blur: 20px;
-  --border-color: rgba(255, 255, 255, 0.2);
+  --border-color: rgba(255, 255, 255, 0.15);
   --font-sans: 'Inter', sans-serif;
 }
 
@@ -31,7 +28,7 @@ html {
 
 body {
   font-family: var(--font-sans);
-  background: linear-gradient(135deg, #0e0e0e, #1a1a1a);
+  background-color: var(--bg-color);
   color: var(--text-color);
   line-height: 1.6;
   min-height: 100vh;
@@ -42,17 +39,14 @@ body {
   overflow-x: hidden;
 }
 
-/* Glassmorphism Container */
+/* Container */
 .app-container {
   max-width: 1000px;
   width: 100%;
   padding: 2rem;
-  border-radius: 20px;
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border-radius: 12px;
+  background-color: #1e1e1e;
   border: 1px solid var(--border-color);
-  box-shadow: 0 8px 32px var(--shadow-color);
   display: flex;
   flex-direction: column;
   gap: 2rem;
@@ -91,12 +85,9 @@ body {
 /* Sections */
 .app-main section {
   padding: 1.5rem;
-  border-radius: 16px;
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border-radius: 8px;
+  background-color: #1e1e1e;
   border: 1px solid var(--border-color);
-  box-shadow: 0 4px 20px var(--shadow-color);
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -127,9 +118,9 @@ label {
 input[type="file"],
 input[type="password"],
 input[type="text"] {
-  background: rgba(255, 255, 255, 0.1);
+  background-color: #2a2a2a;
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 0.75rem 1rem;
   color: var(--text-color);
   font-size: 1rem;
@@ -139,7 +130,7 @@ input[type="text"] {
 input[type="file"]:hover,
 input[type="password"]:hover,
 input[type="text"]:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background-color: #333;
 }
 
 input[type="file"]:focus,
@@ -147,7 +138,7 @@ input[type="password"]:focus,
 input[type="text"]:focus {
   outline: none;
   border-color: var(--primary-color);
-  background: rgba(255, 255, 255, 0.2);
+  background-color: #3a3a3a;
 }
 
 /* File input button */
@@ -155,7 +146,7 @@ input[type="file"]::file-selector-button {
   background-color: var(--primary-color);
   color: #000;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 0.5rem 1rem;
   margin-right: 1rem;
   cursor: pointer;
@@ -169,7 +160,7 @@ input[type="file"]::file-selector-button:hover {
 /* Drag & Drop Zone */
 #drop-zone {
   border: 2px dashed var(--border-color);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 2rem;
   text-align: center;
   cursor: pointer;
@@ -177,7 +168,7 @@ input[type="file"]::file-selector-button:hover {
 }
 
 #drop-zone:hover {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: #2a2a2a;
 }
 
 #drop-zone.dragover {
@@ -213,12 +204,12 @@ input[type="file"]::file-selector-button:hover {
   color: var(--text-secondary-color);
   user-select: none;
   padding: 4px 8px;
-  border-radius: 6px;
+  border-radius: 4px;
   transition: background-color 0.3s, color 0.3s;
 }
 
 .toggle-label:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: #333;
   color: var(--text-color);
 }
 
@@ -231,31 +222,22 @@ button#submit-btn {
   color: #000;
   padding: 1rem;
   border: none;
-  border-radius: 12px;
+  border-radius: 6px;
   font-size: 1.1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.3s, transform 0.2s, box-shadow 0.3s;
+  transition: background-color 0.3s;
   margin-top: 1rem;
 }
 
 button#submit-btn:hover {
   background-color: var(--primary-hover-color);
-  transform: translateY(-3px);
-  box-shadow: 0 6px 20px rgba(0, 255, 231, 0.3);
-}
-
-button#submit-btn:active {
-  transform: translateY(0);
-  box-shadow: none;
 }
 
 button:disabled {
   background-color: #555;
   color: #999;
   cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
 }
 
 /* Small text */
@@ -267,9 +249,9 @@ small {
 /* Status, Errors, Previews */
 pre#status-log,
 pre#error-message {
-  background: rgba(255, 255, 255, 0.05);
+  background-color: #1e1e1e;
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 6px;
   padding: 1rem;
   font-family: monospace;
   font-size: 0.9rem;
@@ -282,12 +264,12 @@ pre#error-message {
 pre#error-message {
   color: var(--error-color);
   border-color: rgba(255, 76, 76, 0.5);
-  background: rgba(255, 76, 76, 0.1);
+  background-color: rgba(255, 76, 76, 0.1);
 }
 
 /* Loader */
 .loader {
-  border: 4px solid rgba(255, 255, 255, 0.1);
+  border: 4px solid #333;
   border-top: 4px solid var(--primary-color);
   border-radius: 50%;
   width: 40px;
@@ -312,15 +294,15 @@ pre#error-message {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(255, 255, 255, 0.05);
+  background-color: #2a2a2a;
   padding: 1rem;
-  border-radius: 10px;
+  border-radius: 6px;
   border: 1px solid var(--border-color);
   transition: background-color 0.3s;
 }
 
 #download-links li:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background-color: #333;
 }
 
 #download-links a {
@@ -340,9 +322,9 @@ pre#error-message {
 
 /* Preview Content */
 #preview-content .preview-item {
-  background: rgba(255, 255, 255, 0.05);
+  background-color: #2a2a2a;
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 1rem;
   margin-bottom: 1rem;
   transition: background-color 0.3s;
@@ -368,7 +350,7 @@ pre#error-message {
   max-width: 150px;
   height: auto;
   margin: 5px;
-  border-radius: 8px;
+  border-radius: 4px;
   border: 1px solid var(--border-color);
 }
 
