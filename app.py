@@ -22,8 +22,9 @@ OUTPUT_FOLDER = Path(os.getenv('OUTPUT_FOLDER', 'output'))
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 ALLOWED_EXTENSIONS = {'pdf'}
 
-UPLOAD_FOLDER.mkdir(exist_ok=True)
-OUTPUT_FOLDER.mkdir(exist_ok=True)
+# Directories are now created in the Dockerfile, no need to create them here.
+# UPLOAD_FOLDER.mkdir(exist_ok=True)
+# OUTPUT_FOLDER.mkdir(exist_ok=True)
 
 # --- Helper Functions ---
 

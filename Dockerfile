@@ -9,17 +9,26 @@ ENV PYTHONUNBUFFERED 1
 # Set the working directory in the container
 WORKDIR /app
 
+# Create a non-root user and group first
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+
+# Create necessary directories *before* copying app code
+# These directories will be inside /app
+RUN mkdir uploads output
+
 # Install system dependencies if needed (e.g., for certain Python packages)
 # RUN apt-get update && apt-get install -y --no-install-recommends some-package && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Install Python dependencies (as root)
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code into the container
-# Ensure permissions are set correctly for the non-root user later
-COPY --chown=appuser:appgroup . .
+# Copy the rest of the application code into the container (still as root)
+COPY . .
+
+# Now, set ownership for the entire app directory *after* copying
+RUN chown -R appuser:appgroup /app
 
 # Make port 5009 available to the world outside this container
 # This is the default port used in app.py
@@ -31,15 +40,7 @@ EXPOSE 5009
 # ENV FLASK_RUN_HOST=0.0.0.0 # Used by flask run, gunicorn uses --bind
 # ENV FLASK_RUN_PORT=5009 # Used by flask run, gunicorn uses --bind
 
-# Define the command to run the application using Gunicorn
-# Bind to 0.0.0.0 to allow external connections to the container
-# Create a non-root user and group
-RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
-
-# Create necessary directories and set ownership *before* switching user
-RUN mkdir uploads output && chown appuser:appgroup uploads output
-
-# Switch to the non-root user
+# Switch to the non-root user *after* all setup and ownership changes are done
 USER appuser
 
 # Define the command to run the application using Gunicorn
