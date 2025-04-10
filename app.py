@@ -27,12 +27,22 @@ app = Flask(__name__)
 # --- Configuration ---
 FLASK_PORT_INT = int(os.getenv('FLASK_PORT', 5009)) # Get port for default SERVER_NAME
 
-# Set SERVER_NAME for absolute URL generation (required for _external=True in url_for)
-# Use environment variable or default to localhost:{FLASK_PORT}.
-app.config['SERVER_NAME'] = os.getenv('SERVER_NAME', f'localhost:{FLASK_PORT_INT}')
-# Ensure other relevant configs are set if needed (though usually handled by SERVER_NAME)
-# app.config['APPLICATION_ROOT'] = os.getenv('APPLICATION_ROOT', '/')
-# app.config['PREFERRED_URL_SCHEME'] = os.getenv('PREFERRED_URL_SCHEME', 'http')
+# Parse SERVER_NAME env var to handle full URLs
+raw_server_name = os.getenv('SERVER_NAME', f'localhost:{FLASK_PORT_INT}')
+if raw_server_name.startswith('http://'):
+    app.config['PREFERRED_URL_SCHEME'] = 'http'
+    raw_server_name = raw_server_name[len('http://'):]
+elif raw_server_name.startswith('https://'):
+    app.config['PREFERRED_URL_SCHEME'] = 'https'
+    raw_server_name = raw_server_name[len('https://'):]
+else:
+    # Default scheme if not specified
+    app.config['PREFERRED_URL_SCHEME'] = os.getenv('PREFERRED_URL_SCHEME', 'http')
+
+# Remove trailing slash if present
+raw_server_name = raw_server_name.rstrip('/')
+
+app.config['SERVER_NAME'] = raw_server_name
 
 UPLOAD_FOLDER = Path(os.getenv('UPLOAD_FOLDER', 'uploads'))
 OUTPUT_FOLDER = Path(os.getenv('OUTPUT_FOLDER', 'output'))
