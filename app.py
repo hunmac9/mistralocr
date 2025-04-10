@@ -10,6 +10,8 @@ import zipfile
 from pathlib import Path
 from uuid import uuid4
 from flask import Flask, request, render_template, jsonify, send_from_directory, url_for
+import threading
+import time
 from mistralai import Mistral, DocumentURLChunk
 from mistralai.models import OCRResponse
 from werkzeug.utils import secure_filename
@@ -266,6 +268,55 @@ def create_zip_archive(source_dir: Path, output_zip_path: Path):
         raise
 
 
+# --- Global job store ---
+jobs = {}
+jobs_lock = threading.Lock()
+
+# --- Background worker function ---
+def background_process_job(job_id, file_storage, api_key_to_use):
+    with jobs_lock:
+        jobs[job_id]['status'] = 'processing'
+    try:
+        session_id = str(uuid4())
+        session_upload_dir = UPLOAD_FOLDER / session_id
+        session_output_dir = OUTPUT_FOLDER / session_id
+        session_upload_dir.mkdir(parents=True, exist_ok=True)
+        session_output_dir.mkdir(parents=True, exist_ok=True)
+
+        original_filename = file_storage.filename
+        filename_sanitized = secure_filename(original_filename)
+        pdf_base_sanitized = secure_filename(Path(original_filename).stem)
+        temp_pdf_path = session_upload_dir / filename_sanitized
+        zip_filename = f"{pdf_base_sanitized}_output.zip"
+        zip_output_path = session_output_dir / zip_filename
+        individual_output_dir = session_output_dir / pdf_base_sanitized
+
+        file_storage.save(temp_pdf_path)
+
+        # Process PDF
+        processed_pdf_base, markdown_content, image_filenames, md_path, img_dir = process_pdf(
+            temp_pdf_path, api_key_to_use, session_output_dir
+        )
+
+        # Create ZIP
+        create_zip_archive(individual_output_dir, zip_output_path)
+
+        # Cleanup upload dir
+        try:
+            shutil.rmtree(session_upload_dir)
+        except Exception:
+            pass
+
+        download_url = url_for('download_file', session_id=session_id, filename=zip_filename, _external=True)
+
+        with jobs_lock:
+            jobs[job_id]['status'] = 'done'
+            jobs[job_id]['download_url'] = download_url
+    except Exception as e:
+        with jobs_lock:
+            jobs[job_id]['status'] = 'error'
+            jobs[job_id]['error'] = str(e)
+
 # --- Flask Routes ---
 
 @app.route('/')
@@ -289,97 +340,36 @@ def handle_process():
         api_key_to_use = form_api_key
         print("Using API key from form input as fallback.")
     else:
-        # Neither environment variable nor form input has the key
         return jsonify({"error": "Mistral API Key is required. Set the MISTRAL_API_KEY environment variable or provide it in the form."}), 400
 
     if not files or all(f.filename == '' for f in files):
-         return jsonify({"error": "No selected PDF files"}), 400
+        return jsonify({"error": "No selected PDF files"}), 400
 
-    valid_files, invalid_files = [], []
+    # For simplicity, handle only the first valid PDF file asynchronously
     for f in files:
-        if f and allowed_file(f.filename): valid_files.append(f)
-        elif f and f.filename != '': invalid_files.append(f.filename)
+        if f and allowed_file(f.filename):
+            job_id = str(uuid4())
+            with jobs_lock:
+                jobs[job_id] = {"status": "queued", "download_url": None, "error": None}
+            # Start background thread
+            t = threading.Thread(target=background_process_job, args=(job_id, f, api_key_to_use))
+            t.start()
+            return jsonify({"job_id": job_id, "status": "queued"}), 202
 
-    if not valid_files:
-         # ... (error handling as before) ...
-         error_msg = "No valid PDF files found."
-         if invalid_files: error_msg += f" Invalid files skipped: {', '.join(invalid_files)}"
-         return jsonify({"error": error_msg}), 400
+    return jsonify({"error": "No valid PDF files found."}), 400
 
-
-    session_id = str(uuid4())
-    session_upload_dir = UPLOAD_FOLDER / session_id
-    session_output_dir = OUTPUT_FOLDER / session_id
-    session_upload_dir.mkdir(parents=True, exist_ok=True)
-    session_output_dir.mkdir(parents=True, exist_ok=True)
-
-    processed_files_results = [] # Changed name for clarity
-    processing_errors = []
-    if invalid_files: processing_errors.append(f"Skipped non-PDF files: {', '.join(invalid_files)}")
-
-    for file in valid_files:
-        original_filename = file.filename
-        filename_sanitized = secure_filename(original_filename)
-        pdf_base_sanitized = secure_filename(Path(original_filename).stem) # Get sanitized base name
-        temp_pdf_path = session_upload_dir / filename_sanitized
-        zip_filename = f"{pdf_base_sanitized}_output.zip"
-        zip_output_path = session_output_dir / zip_filename
-        individual_output_dir = session_output_dir / pdf_base_sanitized # Dir containing MD + images/
-
-        try:
-            print(f"Saving uploaded file temporarily to: {temp_pdf_path}")
-            file.save(temp_pdf_path)
-
-            # Process PDF - Capture new return values, passing the determined key
-            processed_pdf_base, markdown_content, image_filenames, md_path, img_dir = process_pdf(
-                temp_pdf_path, api_key_to_use, session_output_dir
-            )
-
-            # Create ZIP (using the individual output dir)
-            create_zip_archive(individual_output_dir, zip_output_path)
-
-            download_url = url_for('download_file', session_id=session_id, filename=zip_filename, _external=True)
-
-            # Store results including preview data
-            processed_files_results.append({
-                "original_filename": original_filename, # Keep original name for display
-                "zip_filename": zip_filename,
-                "download_url": download_url,
-                "preview": {
-                    # "markdown": markdown_content, # Removed - Markdown is only in the ZIP now
-                    "images": image_filenames,
-                    "pdf_base": processed_pdf_base # Use the sanitized base name returned by process_pdf
-                }
-            })
-            print(f"Successfully processed and zipped: {original_filename}")
-
-        except Exception as e:
-            print(f"ERROR: Failed processing {original_filename}: {e}")
-            processing_errors.append(f"{original_filename}: Processing Error - {e}")
-        finally:
-            if temp_pdf_path.exists():
-                try: temp_pdf_path.unlink()
-                except OSError as unlink_err: print(f"Warning: Could not delete temp file {temp_pdf_path}: {unlink_err}")
-
-    # Cleanup session upload dir
-    try:
-        shutil.rmtree(session_upload_dir)
-        print(f"Cleaned up session upload directory: {session_upload_dir}")
-    except OSError as rmtree_err:
-        print(f"Warning: Could not delete session upload directory {session_upload_dir}: {rmtree_err}")
-
-    if not processed_files_results and processing_errors:
-         return jsonify({"error": "All PDF processing attempts failed.", "details": processing_errors}), 500
-    elif not processed_files_results:
-         return jsonify({"error": "No files were processed successfully."}), 500
-    else:
-        # Return session_id along with results for constructing image URLs on frontend
-        return jsonify({
-            "success": True,
-            "session_id": session_id,
-            "results": processed_files_results, # Renamed from 'downloads'
-            "errors": processing_errors
-        }), 200
+@app.route('/status/<job_id>', methods=['GET'])
+def check_status(job_id):
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if not job:
+            return jsonify({"error": "Invalid job ID"}), 404
+        response = {"status": job['status']}
+        if job['status'] == 'done':
+            response['download_url'] = job['download_url']
+        if job['status'] == 'error':
+            response['error'] = job['error']
+        return jsonify(response), 200
 
 # --- NEW ROUTE for serving images ---
 @app.route('/view_image/<session_id>/<pdf_base>/<filename>')
