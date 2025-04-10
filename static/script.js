@@ -161,8 +161,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const result = await response.json();
+            console.log('Server response JSON:', result);
             if (!result.job_id) {
-                throw new Error('Unexpected response: missing job_id');
+                const errMsg = result.error ? `Server error: ${result.error}` : 'Unexpected response: missing job_id';
+                throw new Error(errMsg);
             }
 
             logStatus(`Job started with ID: ${result.job_id}`);
