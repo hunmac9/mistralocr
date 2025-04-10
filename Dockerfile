@@ -16,8 +16,8 @@ RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 # These directories will be inside /app
 RUN mkdir uploads output
 
-# Install system dependencies if needed (e.g., for certain Python packages)
-# RUN apt-get update && apt-get install -y --no-install-recommends some-package && rm -rf /var/lib/apt/lists/*
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends ghostscript && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies (as root)
 # Copy requirements first to leverage Docker cache

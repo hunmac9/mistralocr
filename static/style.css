@@ -1,31 +1,31 @@
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* Clean, Modern, Mobile-First Light Theme */
 
-/* Sharp, Modern, Dark Theme with Mobile Responsiveness */
+/* Import Inter font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 :root {
-  --bg-color: #121212;
-  --text-color: #e0e0e0;
-  --text-secondary-color: #a0a0a0;
-  --primary-color: #00b894; /* Vibrant teal */
-  --primary-hover-color: #019875;
-  --container-bg-color: #1e1e1e;
-  --section-bg-color: #242424;
-  --input-bg-color: #2a2a2a;
-  --input-border-color: #444;
+  --bg-color: #ffffff;
+  --text-color: #222222;
+  --text-secondary-color: #666666;
+  --primary-color: #0077cc;
+  --primary-hover-color: #005fa3;
+  --container-bg-color: #f9f9f9;
+  --section-bg-color: #ffffff;
+  --input-bg-color: #ffffff;
+  --input-border-color: #cccccc;
   --input-focus-border-color: var(--primary-color);
-  --input-focus-shadow: rgba(0, 184, 148, 0.3);
+  --input-focus-shadow: rgba(0, 119, 204, 0.2);
   --link-color: var(--primary-color);
-  --link-hover-color: #33ffc9;
-  --error-color: #ff4d4f;
-  --success-color: #34c759;
+  --link-hover-color: #004b80;
+  --error-color: #d32f2f;
+  --success-color: #388e3c;
   --loader-color: var(--primary-color);
-  --shadow-color: rgba(0, 0, 0, 0.5);
-  --border-color: #333;
-  --footer-text-color: #888;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+  --border-color: #e0e0e0;
+  --footer-text-color: #888888;
 
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
 }
 
 /* Reset & Base */
@@ -49,6 +49,7 @@ body {
   padding: 1rem;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.3s, color 0.3s;
 }
 
 /* Container */
@@ -58,7 +59,7 @@ body {
   background-color: var(--container-bg-color);
   padding: 2rem;
   border-radius: 12px;
-  box-shadow: 0 8px 25px var(--shadow-color);
+  box-shadow: 0 4px 20px var(--shadow-color);
   border: 1px solid var(--border-color);
 }
 
@@ -186,7 +187,7 @@ input[type="file"]::file-selector-button:hover {
 
 .toggle-label:hover {
   color: var(--text-color);
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(0, 0, 0, 0.05);
 }
 
 #api-key-toggle:not(:checked) + .toggle-label::after { content: 'Show'; }
@@ -211,7 +212,7 @@ button#submit-btn {
 button#submit-btn:hover {
   background-color: var(--primary-hover-color);
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 184, 148, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 119, 204, 0.2);
 }
 
 button#submit-btn:active {
@@ -220,7 +221,7 @@ button#submit-btn:active {
 }
 
 button:disabled {
-  background-color: #444;
+  background-color: #ccc;
   color: #888;
   cursor: not-allowed;
   transform: none;
@@ -271,13 +272,13 @@ a:hover {
 
 #error-message {
   color: var(--error-color);
-  border-color: rgba(255, 77, 79, 0.4);
-  background-color: rgba(255, 77, 79, 0.08);
+  border-color: rgba(211, 47, 47, 0.4);
+  background-color: rgba(211, 47, 47, 0.08);
 }
 
 /* Loader */
 .loader {
-  border: 4px solid rgba(255, 255, 255, 0.15);
+  border: 4px solid rgba(0, 0, 0, 0.1);
   border-top: 4px solid var(--loader-color);
   border-radius: 50%;
   width: 30px;
@@ -300,9 +301,7 @@ a:hover {
 #download-links li {
   background-color: transparent;
   padding: 1rem 0;
-  border: none;
   border-bottom: 1px solid var(--border-color);
-  margin-bottom: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -314,7 +313,7 @@ a:hover {
 }
 
 #download-links li:hover {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: rgba(0, 0, 0, 0.03);
 }
 
 #download-links a {
@@ -364,11 +363,6 @@ footer p {
   margin-bottom: 0;
 }
 
-/* Hide social icons */
-footer .social-icons a {
-  display: none;
-}
-
 /* Utility */
 .hidden {
   display: none !important;
@@ -377,12 +371,12 @@ footer .social-icons a {
 /* Mobile responsiveness */
 @media (max-width: 768px) {
   .container {
-    padding: 1.5rem;
+    padding: 1rem;
     margin: 1rem;
   }
 
   header h1 {
-    font-size: 1.8rem;
+    font-size: 1.6rem;
   }
 
   main section {
@@ -394,364 +388,3 @@ footer .social-icons a {
     padding: 0.75rem 1rem;
   }
 }
-
-/* Import Inter font */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
-/* Global Resets & Base Styles */
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-html {
-  font-size: 16px; /* Base font size */
-}
-
-body {
-  font-family: var(--font-sans);
-  background-color: var(--bg-color);
-  color: var(--text-color);
-  line-height: 1.6;
-  padding: 2rem;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
-}
-
-/* Main Container */
-.container {
-  max-width: 800px;
-  margin: 3rem auto;
-  background-color: var(--container-bg-color);
-  padding: 2.5rem 3rem; /* Slightly adjust padding */
-  border-radius: 12px; /* Slightly less rounded */
-  box-shadow: 0 8px 25px var(--shadow-color); /* Adjusted shadow */
-  border: 1px solid var(--border-color);
-}
-
-/* Header */
-header {
-  text-align: center;
-  margin-bottom: 3rem;
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid var(--border-color);
-}
-
-header h1 {
-  color: var(--text-color);
-  font-size: 2.4rem; /* Slightly smaller */
-  font-weight: 600; /* Less bold */
-  margin-bottom: 0.75rem;
-  letter-spacing: -0.2px; /* Less aggressive spacing */
-}
-
-.tagline {
-  font-size: 1.1rem;
-  color: var(--text-secondary-color);
-}
-
-/* Sections */
-main section {
-  margin-bottom: 2.5rem; /* Slightly less margin */
-  padding: 2rem;
-  background-color: var(--section-bg-color);
-  border-radius: 10px; /* Consistent rounding */
-  border: 1px solid var(--border-color);
-}
-
-main section h2 {
-    margin-bottom: 1.5rem;
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: var(--text-color);
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 0.75rem;
-}
-
-/* Form Styling */
-.form-group {
-  margin-bottom: 1.75rem;
-}
-
-label {
-  display: block;
-  font-weight: 500; /* Medium weight */
-  margin-bottom: 0.75rem;
-  color: var(--text-secondary-color);
-  font-size: 0.95rem;
-}
-
-input[type="password"],
-input[type="text"],
-input[type="file"] {
-  width: 100%;
-  padding: 0.8rem 1rem;
-  border: 1px solid var(--input-border-color);
-  border-radius: 6px; /* Slightly less rounding */
-  font-size: 1rem;
-  background-color: var(--input-bg-color);
-  color: var(--text-color);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-  font-family: inherit; /* Ensure consistent font */
-}
-
-input[type="password"]:focus,
-input[type="text"]:focus,
-input[type="file"]:focus {
-  outline: none;
-  border-color: var(--input-focus-border-color);
-  box-shadow: 0 0 0 3px var(--input-focus-shadow);
-}
-
-input[type="file"] {
-  padding: 0.5rem 0.75rem; /* Adjust padding for file input */
-  cursor: pointer;
-}
-
-input[type="file"]::file-selector-button {
-    background-color: var(--primary-color);
-    color: #ffffff;
-    padding: 0.6rem 1rem;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    font-weight: 500;
-    transition: background-color 0.2s ease;
-    margin-right: 1rem;
-}
-
-input[type="file"]::file-selector-button:hover {
-    background-color: var(--primary-hover-color);
-}
-
-/* Password Toggle */
-.password-toggle-group {
-  display: flex;
-  align-items: center;
-  position: relative;
-}
-
-.password-toggle-group input[type="password"] {
-    padding-right: 50px; /* More space for toggle text */
-}
-
-.password-toggle-group input[type="checkbox"] {
-    opacity: 0;
-    position: absolute;
-    width: 1px;
-    height: 1px;
-}
-
-.toggle-label {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  cursor: pointer;
-  font-weight: 500;
-  font-size: 0.85rem;
-  color: var(--text-secondary-color);
-  user-select: none;
-  padding: 4px 6px;
-  border-radius: 4px;
-  transition: color 0.2s ease, background-color 0.2s ease;
-}
-
-.toggle-label:hover {
-    color: var(--text-color);
-    background-color: rgba(255, 255, 255, 0.1);
-}
-
-#api-key-toggle:not(:checked) + .toggle-label::after { content: 'Show'; }
-#api-key-toggle:checked + .toggle-label::after { content: 'Hide'; }
-
-/* Submit Button */
-button#submit-btn {
-  background-color: var(--primary-color);
-  color: #ffffff;
-  padding: 0.8rem 1.5rem; /* Slightly less vertical padding */
-  border: none;
-  border-radius: 6px; /* Match input rounding */
-  cursor: pointer;
-  font-size: 1.05rem;
-  font-weight: 500; /* Medium weight */
-  transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
-  display: block;
-  width: 100%;
-  margin-top: 1rem;
-}
-
-button#submit-btn:hover {
-  background-color: var(--primary-hover-color);
-  transform: translateY(-1px); /* Less lift */
-  box-shadow: 0 2px 8px rgba(44, 182, 125, 0.2); /* Softer shadow matching primary color */
-}
-
-button#submit-btn:active {
-    transform: translateY(0px);
-    box-shadow: none;
-}
-
-button:disabled {
-  background-color: #444; /* Adjusted disabled state */
-  color: #888;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-/* Helper Text */
-small {
-  display: block;
-  margin-top: 0.6rem;
-  font-size: 0.85rem;
-  color: var(--text-secondary-color);
-}
-
-/* Links */
-a {
-  color: var(--link-color);
-  text-decoration: none;
-  transition: color 0.2s ease;
-}
-
-a:hover {
-  color: var(--link-hover-color);
-  text-decoration: underline;
-}
-
-/* Status, Results, Preview, Error Areas */
-#status-log,
-#error-message,
-.markdown-preview pre {
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  max-height: 400px; /* Increased max height */
-  overflow-y: auto;
-  background-color: var(--input-bg-color); /* Use input background for consistency */
-  color: var(--text-secondary-color);
-  padding: 1rem;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-  line-height: 1.6;
-}
-
-#status-log {
-  color: var(--text-color); /* Status log can be primary text color */
-}
-
-#error-message {
-    color: var(--error-color);
-    border-color: rgba(229, 72, 77, 0.4); /* Softer error border */
-    background-color: rgba(229, 72, 77, 0.08); /* Slight red background */
-}
-
-/* Loader */
-.loader {
-  border: 4px solid rgba(255, 255, 255, 0.15);
-  border-top: 4px solid var(--loader-color);
-  border-radius: 50%;
-  width: 30px; /* Slightly smaller */
-  height: 30px;
-  animation: spin 0.8s linear infinite;
-  margin: 1.5rem auto;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-/* Download Links */
-#download-links {
-  list-style: none;
-  padding: 0;
-}
-
-#download-links li {
-  background-color: transparent; /* Remove background */
-  padding: 1rem 0; /* Vertical padding only */
-  border: none; /* Remove border */
-  border-bottom: 1px solid var(--border-color); /* Use bottom border as separator */
-  margin-bottom: 0; /* Remove margin */
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  transition: background-color 0.2s ease;
-}
-
-#download-links li:last-child {
-    border-bottom: none; /* No border for the last item */
-}
-
-#download-links li:hover {
-    background-color: rgba(255, 255, 255, 0.05); /* Subtle hover */
-}
-
-#download-links a {
-  font-weight: 500;
-  color: var(--link-color);
-  display: inline-flex; /* Align icon and text */
-  align-items: center;
-  gap: 0.5rem; /* Space between icon and text */
-}
-
-#download-links a::before {
-  content: '\f019'; /* FontAwesome download icon */
-  font-family: "Font Awesome 6 Free";
-  font-weight: 900;
-  font-size: 0.9em;
-}
-
-/* Preview Section */
-#preview-content .preview-item {
-  background-color: var(--container-bg-color); /* Match main container bg */
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-#preview-content h3 {
-  color: var(--text-color);
-  border-bottom: 1px solid var(--border-color);
-  padding-bottom: 0.75rem;
-  margin-bottom: 1.5rem;
-  font-size: 1.2rem;
-  font-weight: 600;
-}
-
-/* Footer */
-footer {
-  text-align: center;
-  padding: 2rem 1rem;
-  border-top: 1px solid var(--border-color);
-  margin-top: 4rem;
-  color: var(--footer-text-color);
-  font-size: 0.9rem;
-}
-
-footer p {
-  margin-bottom: 0; /* Remove margin if only one line */
-}
-
-/* Remove social icons styling as they will be removed from HTML */
-footer .social-icons a {
- display: none;
-}
-
-
-/* Utility class for hiding elements */
-.hidden {
-    display: none !important;
-}
-
-/* Add Inter font */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
