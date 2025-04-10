@@ -18,7 +18,7 @@
   <div class="container">
     <header>
       <h1>PDF to Markdown</h1>
-      <p class="tagline">Effortless PDF to Markdown conversion powered by Mistral AI.</p>
+      <p class="tagline">PDF to Markdown conversion using Mistral's AI OCR model API.</p>
     </header>
 
     <main>
@@ -28,7 +28,7 @@
             <label for="pdf-files">Select PDF Files</label>
             <input type="file" id="pdf-files" name="pdf_files" accept=".pdf" multiple required>
             <small>Select one or more PDF files to convert.</small>
-            <small>Note: Processing time depends on file size and API limits.</small>
+            <small>Processing time depends on file size and API limits, but should not take longer than a couple minutes</small>
           </div>
           <button type="submit" id="submit-btn">Convert to Markdown</button>
         </form>
@@ -59,7 +59,7 @@
       <!-- API Key Section -->
       <section id="api-key-section" class="api-key-section">
         <h2>Mistral API Key (Optional)</h2>
-        <p>Provide your API key if the server-configured key is unavailable or rate-limited.</p>
+        <p>Provide your API key if the .env key is not configured or rate-limited.</p>
         <div class="form-group">
           <label for="api-key">API Key</label>
           <div class="password-toggle-group">
