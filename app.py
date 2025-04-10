@@ -23,12 +23,21 @@ app = Flask(__name__)
 UPLOAD_FOLDER = Path(os.getenv('UPLOAD_FOLDER', 'uploads'))
 OUTPUT_FOLDER = Path(os.getenv('OUTPUT_FOLDER', 'output'))
 try:
-    max_mb = int(os.getenv('MAX_UPLOAD_MB', '100')) # Default to 100MB
-    if max_mb <= 0: max_mb = 100 # Ensure positive value
+    max_mb = int(os.getenv('MAX_UPLOAD_MB', '100'))
+    if max_mb <= 0: max_mb = 100
 except ValueError:
-    max_mb = 100 # Fallback if env var is not a valid integer
+    max_mb = 100
+
+try:
+    mistral_max_mb = int(os.getenv('MISTRAL_MAX_MB', '50'))
+    if mistral_max_mb <= 0: mistral_max_mb = 50
+except ValueError:
+    mistral_max_mb = 50
+
 app.config['MAX_CONTENT_LENGTH'] = max_mb * 1024 * 1024
 print(f"Maximum upload size set to: {max_mb} MB")
+print(f"Mistral API max file size set to: {mistral_max_mb} MB")
+
 ALLOWED_EXTENSIONS = {'pdf'}
 
 # Directories are now created in the Dockerfile, no need to create them here.
@@ -64,6 +73,33 @@ def process_pdf(pdf_path: Path, api_key: str, session_output_dir: Path) -> tuple
     uploaded_file_id = None # Store only the ID for cleanup
 
     try:
+        # Check if file exceeds Mistral API limit
+        if pdf_path.stat().st_size > mistral_max_mb * 1024 * 1024:
+            print(f"  PDF exceeds {mistral_max_mb}MB. Compressing before upload...")
+            compressed_path = pdf_path.parent / f"{pdf_path.stem}_compressed.pdf"
+            # Use Ghostscript or similar to compress PDF
+            import subprocess
+            gs_cmd = [
+                "gs",
+                "-sDEVICE=pdfwrite",
+                "-dCompatibilityLevel=1.4",
+                "-dPDFSETTINGS=/screen",
+                "-dNOPAUSE",
+                "-dQUIET",
+                "-dBATCH",
+                f"-sOutputFile={compressed_path}",
+                str(pdf_path)
+            ]
+            try:
+                subprocess.run(gs_cmd, check=True)
+                if compressed_path.exists() and compressed_path.stat().st_size < pdf_path.stat().st_size:
+                    print(f"  Compression successful. Using compressed file: {compressed_path.name}")
+                    pdf_path = compressed_path
+                else:
+                    print("  Compression did not reduce size. Using original file.")
+            except Exception as e:
+                print(f"  Compression failed: {e}. Using original file.")
+
         print(f"  Uploading {pdf_path.name} to Mistral...")
         with open(pdf_path, "rb") as f:
             pdf_bytes = f.read()
@@ -218,7 +254,7 @@ def create_zip_archive(source_dir: Path, output_zip_path: Path):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', max_upload_mb=max_mb, mistral_max_mb=mistral_max_mb)
 
 @app.route('/process', methods=['POST'])
 def handle_process():
