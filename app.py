@@ -49,10 +49,9 @@ def process_pdf(pdf_path: Path, api_key: str, session_output_dir: Path) -> tuple
     pdf_base_sanitized = secure_filename(pdf_base) # Use sanitized version for directory/file names
     print(f"Processing {pdf_path.name}...")
 
-    pdf_output_dir = session_output_dir / pdf_base_sanitized
+    pdf_output_dir = session_output_dir / pdf_base_sanitized # e.g., output/session_id/my_document/
     pdf_output_dir.mkdir(exist_ok=True)
-    images_dir = pdf_output_dir / "images"
-    images_dir.mkdir(exist_ok=True)
+    # Images will be saved directly in pdf_output_dir now
 
     client = Mistral(api_key=api_key)
     ocr_response: OCRResponse | None = None
@@ -88,52 +87,73 @@ def process_pdf(pdf_path: Path, api_key: str, session_output_dir: Path) -> tuple
                      json.dump(ocr_response.dict(), json_file, indent=4, ensure_ascii=False)
             print(f"  Raw OCR response saved to {ocr_json_path}")
         except Exception as json_err:
-            print(f"  Warning: Could not save raw OCR JSON: {json_err}")
+            # Make saving JSON mandatory - raise error if it fails
+            raise Exception(f"Failed to save raw OCR JSON response: {json_err}") from json_err
 
         # Process OCR Response -> Markdown & Images
-        global_image_counter = 1
         updated_markdown_pages = []
-        extracted_image_filenames = [] # Store filenames for preview
+        extracted_image_filenames = [] # Store filenames for preview (original IDs, sanitized)
+        image_path_updates = {} # Store mapping from original ID to relative path for markdown update
 
         print(f"  Extracting images and generating Markdown...")
         for page_index, page in enumerate(ocr_response.pages):
-            current_page_markdown = page.markdown
-            page_image_mapping = {}
+            current_page_markdown = page.markdown # Start with original markdown
 
             for image_obj in page.images:
-                base64_str = image_obj.image_base64
-                if not base64_str: continue # Skip if no image data
-
-                if base64_str.startswith("data:"):
-                     try: base64_str = base64_str.split(",", 1)[1]
-                     except IndexError: continue
-
-                try: image_bytes = base64.b64decode(base64_str)
-                except Exception as decode_err:
-                    print(f"  Warning: Base64 decode error for image {image_obj.id} on page {page_index+1}: {decode_err}")
+                if not image_obj.id or not image_obj.image_base64:
+                    print(f"  Warning: Skipping image on page {page_index+1} due to missing ID or data.")
                     continue
 
-                original_ext = Path(image_obj.id).suffix
-                ext = original_ext if original_ext else ".png"
-                new_image_name = f"{pdf_base_sanitized}_p{page_index+1}_img{global_image_counter}{ext}"
-                global_image_counter += 1
+                base64_str = image_obj.image_base64
 
-                image_output_path = images_dir / new_image_name
+                # Sanitize the original image ID provided by Mistral to use as filename
+                # Keep the original extension if present, default to .png otherwise
+                original_image_id = image_obj.id
+                sanitized_image_filename = secure_filename(original_image_id)
+                if not Path(sanitized_image_filename).suffix:
+                     sanitized_image_filename += ".png" # Add default extension if missing
+
+                # Path to save the image (directly in the pdf_output_dir)
+                image_output_path = pdf_output_dir / sanitized_image_filename
+
+                # Decode Base64
+                if base64_str.startswith("data:"):
+                    try: base64_str = base64_str.split(",", 1)[1]
+                    except IndexError:
+                         print(f"  Warning: Malformed data URI for image {original_image_id} on page {page_index+1}.")
+                         continue
+                try:
+                    image_bytes = base64.b64decode(base64_str)
+                except Exception as decode_err:
+                    print(f"  Warning: Base64 decode error for image {original_image_id} on page {page_index+1}: {decode_err}")
+                    continue
+
+                # Save the image
                 try:
                     with open(image_output_path, "wb") as img_file:
                         img_file.write(image_bytes)
-                    extracted_image_filenames.append(new_image_name) # Add to list for preview
-                    page_image_mapping[image_obj.id] = new_image_name
+                    if sanitized_image_filename not in extracted_image_filenames: # Avoid duplicates if ID appears on multiple pages
+                        extracted_image_filenames.append(sanitized_image_filename)
+                    # Store mapping for potential markdown update (use original ID as key)
+                    image_path_updates[original_image_id] = sanitized_image_filename
+                    print(f"    Saved image: {sanitized_image_filename}")
                 except IOError as io_err:
                      print(f"  Warning: Could not write image file {image_output_path}: {io_err}")
                      continue
 
-            # Directly use the markdown from the page.
-            # Assuming Mistral provides usable links or placeholders.
+            # Update markdown image references for the current page
+            # Replace occurrences of ![alt](original_image_id) with ![alt](sanitized_image_filename)
+            for original_id, new_filename in image_path_updates.items():
+                 # Basic replacement - might need refinement for complex markdown structures
+                 # This assumes Mistral uses the image ID directly in the markdown link like `![...](image_id)`
+                 current_page_markdown = current_page_markdown.replace(f"({original_id})", f"({new_filename})")
+
             updated_markdown_pages.append(current_page_markdown)
+            image_path_updates = {} # Reset for next page
 
         final_markdown_content = "\n\n---\n\n".join(updated_markdown_pages) # Page separator
-        output_markdown_path = pdf_output_dir / f"{pdf_base_sanitized}_output.md"
+        # Change Markdown filename to just the base name + .md
+        output_markdown_path = pdf_output_dir / f"{pdf_base_sanitized}.md"
 
         try:
             with open(output_markdown_path, "w", encoding="utf-8") as md_file:
@@ -142,8 +162,9 @@ def process_pdf(pdf_path: Path, api_key: str, session_output_dir: Path) -> tuple
         except IOError as io_err:
             raise Exception(f"Failed to write final markdown file: {io_err}") from io_err
 
-        # Return the actual content and image list now
-        return pdf_base_sanitized, final_markdown_content, extracted_image_filenames, output_markdown_path, images_dir
+        # Return details needed for ZIP creation and preview
+        # Note: images_dir is now just pdf_output_dir
+        return pdf_base_sanitized, final_markdown_content, extracted_image_filenames, output_markdown_path, pdf_output_dir
 
     except Exception as e:
         error_str = str(e)
@@ -307,14 +328,14 @@ def handle_process():
 def view_image(session_id, pdf_base, filename):
     """Serves an extracted image file for inline display."""
     safe_session_id = secure_filename(session_id)
-    safe_pdf_base = secure_filename(pdf_base)
-    safe_filename = secure_filename(filename)
+    safe_pdf_base = secure_filename(pdf_base) # The folder name for the specific PDF
+    safe_filename = secure_filename(filename) # The image filename (original sanitized ID)
 
-    # Construct path relative to the *pdf_base* specific output folder
-    directory = OUTPUT_FOLDER / safe_session_id / safe_pdf_base / "images"
+    # Images are now directly inside the pdf_base folder
+    directory = OUTPUT_FOLDER / safe_session_id / safe_pdf_base
     file_path = directory / safe_filename
 
-    # Security check
+    # Security check: Ensure the resolved path is still within the intended directory
     if not str(file_path.resolve()).startswith(str(directory.resolve())):
          return "Invalid path", 400
     if not file_path.is_file():
