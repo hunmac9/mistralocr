@@ -41,5 +41,13 @@ USER appuser
 
 # Define the command to run the application using Gunicorn
 # Bind to 0.0.0.0 to allow external connections to the container
+# Create necessary directories and set ownership before switching user
+RUN mkdir uploads output && chown appuser:appgroup uploads output
+
+# Switch to the non-root user
+USER appuser
+
+# Define the command to run the application using Gunicorn
+# Bind to 0.0.0.0 to allow external connections to the container
 # Use the default port 5009
 CMD ["gunicorn", "--bind", "0.0.0.0:5009", "app:app"]
