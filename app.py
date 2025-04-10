@@ -437,15 +437,17 @@ def stream(job_id):
                     yield f"data: {json.dumps({'status': 'error', 'error': 'Invalid or expired job ID'})}\n\n"
             return # End stream
 
+        # Set timeout slightly longer than Gunicorn worker timeout (300s)
+        sse_timeout = 310
         try:
             while True:
-                message = q.get(timeout=30) # Wait for updates, timeout to prevent hanging
+                message = q.get(timeout=sse_timeout) # Increased timeout
                 if message is None: # End of stream signal from worker
                     break
                 yield f"data: {message}\n\n" # SSE format: data: <json_string>\n\n
         except queue.Empty:
             # Timeout occurred, client might have disconnected or worker is stuck
-            print(f"SSE stream timeout for job {job_id}")
+            print(f"SSE stream timeout ({sse_timeout}s) for job {job_id}")
         finally:
             # Clean up the queue for this job_id when the client disconnects or stream ends
             with jobs_lock:
