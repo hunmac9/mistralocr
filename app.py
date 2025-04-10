@@ -23,9 +23,11 @@ load_dotenv() # Load environment variables from .env file
 app = Flask(__name__)
 
 # --- Configuration ---
+FLASK_PORT_INT = int(os.getenv('FLASK_PORT', 5009)) # Get port for default SERVER_NAME
+
 # Set SERVER_NAME for absolute URL generation (required for _external=True in url_for)
-# Use environment variable or default for local dev/docker.
-app.config['SERVER_NAME'] = os.getenv('SERVER_NAME', 'localhost:5009')
+# Use environment variable or default to localhost:{FLASK_PORT}.
+app.config['SERVER_NAME'] = os.getenv('SERVER_NAME', f'localhost:{FLASK_PORT_INT}')
 # Ensure other relevant configs are set if needed (though usually handled by SERVER_NAME)
 # app.config['APPLICATION_ROOT'] = os.getenv('APPLICATION_ROOT', '/')
 # app.config['PREFERRED_URL_SCHEME'] = os.getenv('PREFERRED_URL_SCHEME', 'http')
@@ -524,9 +526,9 @@ if __name__ == '__main__':
     # Set SERVER_NAME for external URL generation if running locally without Gunicorn/proxy
     # For production, this should ideally be handled by the proxy (e.g., Nginx)
     # or set via environment variables.
-    # SERVER_NAME is now configured above based on environment variable
+    # SERVER_NAME is now configured above
 
     host = os.getenv('FLASK_HOST', '127.0.0.1') # Gunicorn/Docker typically use 0.0.0.0
-    port = int(os.getenv('FLASK_PORT', 5009))
+    port = FLASK_PORT_INT # Use the integer port loaded earlier
     debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() in ['true', '1', 't']
     app.run(host=host, port=port, debug=debug_mode)

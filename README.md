@@ -29,31 +29,50 @@ A simple web application using Flask and the Mistral AI API to convert PDF files
 
 ### Running the App
 
-1.  **Clone the Repository:**
+1. **Clone the Repository:**
+
     ```bash
     git clone https://github.com/hunmac9/mistralocr.git
     cd mistralocr
     ```
 
-2.  **Create `.env` File:**
-    Create a file named `.env` in the project root and add your API key:
+2. **Configure Environment Variables:**
+
+    - Copy the example environment file:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    - Edit `.env` and **add your Mistral API key**:
+
     ```dotenv
-    # .env
     MISTRAL_API_KEY=your_actual_api_key_here
     ```
-    *(This will be used by default unless the user provides their own, don't set your spend limits too high if the app is publicly accessible!)*
 
-3.  **Launch with Docker Compose:**
+    - Optionally, customize the port (`FLASK_PORT`), max upload sizes, or other settings in `.env`.
+
+3. **Launch with Docker Compose:**
+
     ```bash
     docker-compose up --build -d
     ```
-    *   `--build`: Rebuilds the image if needed.
-    *   `-d`: Runs the container in the background (detached mode).
 
-4.  **Access the Web App:**
-    Open your browser and go to: `http://localhost:5009` 🎉
+    * `--build`: Rebuilds the image if needed.
+    * `-d`: Runs the container in the background (detached mode).
 
-5.  **Stopping the App:**
+4. **Access the Web App:**
+
+    Open your browser and go to:
+
+    ```
+    http://localhost:YOUR_PORT
+    ```
+
+    Replace `YOUR_PORT` with the value of `FLASK_PORT` in your `.env` file (default is 5009).
+
+5. **Stopping the App:**
+
     ```bash
     docker-compose down
     ```
