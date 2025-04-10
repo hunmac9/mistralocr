@@ -315,10 +315,19 @@ def background_process_job(job_id, temp_pdf_path, api_key_to_use, session_id):
             temp_pdf_path, api_key_to_use, session_output_dir
         )
 
-        # Create ZIP
+        # Delete the raw OCR JSON response before zipping
+        ocr_json_path = individual_output_dir / "ocr_response.json"
+        try:
+            if ocr_json_path.is_file():
+                ocr_json_path.unlink()
+                print(f"  Deleted raw OCR JSON file: {ocr_json_path}")
+        except Exception as del_err:
+            print(f"  Warning: Could not delete OCR JSON file {ocr_json_path}: {del_err}")
+
+        # Create ZIP (now without the JSON file)
         create_zip_archive(individual_output_dir, zip_output_path)
 
-        # Cleanup upload dir (moved earlier to ensure it runs even if zip/url fails)
+        # Cleanup upload dir
         try:
             if session_upload_dir.exists():
                 shutil.rmtree(session_upload_dir)
