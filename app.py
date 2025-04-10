@@ -18,6 +18,8 @@ from mistralai.models import OCRResponse
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
+from PyPDF2 import PdfReader, PdfWriter
+
 load_dotenv() # Load environment variables from .env file
 
 app = Flask(__name__)
@@ -61,6 +63,47 @@ ALLOWED_EXTENSIONS = {'pdf'}
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def split_pdf(pdf_path: Path, max_size_mb: int) -> list[Path]:
+    """
+    Splits a PDF into multiple parts, each approximately under max_size_mb.
+    Returns list of split PDF paths.
+    """
+    print(f"Splitting PDF {pdf_path} into parts under {max_size_mb} MB...")
+    reader = PdfReader(str(pdf_path))
+    total_pages = len(reader.pages)
+    original_size = pdf_path.stat().st_size
+    print(f"Original PDF has {total_pages} pages, size {original_size / (1024*1024):.2f} MB")
+
+    # Estimate pages per split
+    est_pages_per_split = max(1, int(total_pages * (max_size_mb * 1024 * 1024) / original_size))
+    print(f"Estimated pages per split: {est_pages_per_split}")
+
+    split_files = []
+    part_num = 1
+    page_start = 0
+
+    while page_start < total_pages:
+        writer = PdfWriter()
+        page_end = min(page_start + est_pages_per_split, total_pages)
+        for i in range(page_start, page_end):
+            writer.add_page(reader.pages[i])
+
+        split_path = pdf_path.parent / f"{pdf_path.stem}_part{part_num}.pdf"
+        with open(split_path, "wb") as f_out:
+            writer.write(f_out)
+
+        split_size = split_path.stat().st_size / (1024*1024)
+        print(f"  Created split {split_path.name} with pages {page_start+1}-{page_end}, size {split_size:.2f} MB")
+        if split_size > max_size_mb:
+            print(f"  Warning: split {split_path.name} exceeds {max_size_mb} MB limit ({split_size:.2f} MB)")
+
+        split_files.append(split_path)
+        part_num += 1
+        page_start = page_end
+
+    print(f"Splitting complete: {len(split_files)} parts created.")
+    return split_files
+
 # --- Core Processing Logic ---
 
 def process_pdf(pdf_path: Path, api_key: str, session_output_dir: Path) -> tuple[str, str, list[str], Path, Path]:
@@ -85,47 +128,6 @@ def process_pdf(pdf_path: Path, api_key: str, session_output_dir: Path) -> tuple
     uploaded_file_id = None # Store only the ID for cleanup
 
     try:
-        # Check if file exceeds Mistral API limit
-        if pdf_path.stat().st_size > mistral_max_mb * 1024 * 1024:
-            print(f"  PDF exceeds {mistral_max_mb}MB. Attempting compression...")
-            compressed_path = pdf_path.parent / f"{pdf_path.stem}_compressed.pdf"
-            # Use Ghostscript or similar to compress PDF
-            import subprocess
-            import time
-            gs_cmd = [
-                "gs",
-                "-sDEVICE=pdfwrite",
-                "-dCompatibilityLevel=1.4",
-                "-dPDFSETTINGS=/screen",
-                "-dNOPAUSE",
-                "-dQUIET",
-                "-dBATCH",
-                f"-sOutputFile={compressed_path}",
-                str(pdf_path)
-            ]
-            try:
-                print(f"    Running Ghostscript command: {' '.join(gs_cmd)}")
-                start_time = time.time()
-                subprocess.run(gs_cmd, check=True, capture_output=True) # Capture output to prevent polluting logs unless error
-                end_time = time.time()
-                print(f"    Ghostscript finished in {end_time - start_time:.2f} seconds.")
-                if compressed_path.exists() and compressed_path.stat().st_size < pdf_path.stat().st_size:
-                    print(f"    Compression successful. Original size: {pdf_path.stat().st_size / (1024*1024):.2f} MB, Compressed size: {compressed_path.stat().st_size / (1024*1024):.2f} MB. Using compressed file.")
-                    pdf_path = compressed_path
-                elif compressed_path.exists():
-                     print(f"    Compression did not reduce size significantly (Original: {pdf_path.stat().st_size / (1024*1024):.2f} MB, Compressed: {compressed_path.stat().st_size / (1024*1024):.2f} MB). Using original file.")
-                     compressed_path.unlink() # Clean up useless compressed file
-                else:
-                    print("    Compression failed (output file not found). Using original file.")
-            except subprocess.CalledProcessError as e:
-                print(f"    Ghostscript compression failed: {e}")
-                print(f"    Ghostscript stdout: {e.stdout.decode(errors='ignore')}")
-                print(f"    Ghostscript stderr: {e.stderr.decode(errors='ignore')}")
-                print("    Using original file.")
-            except Exception as e:
-                print(f"    An unexpected error occurred during compression: {e}. Using original file.")
-
-
         print(f"  Uploading {pdf_path.name} (size: {pdf_path.stat().st_size / (1024*1024):.2f} MB) to Mistral...")
         with open(pdf_path, "rb") as f:
             pdf_bytes = f.read()
@@ -310,24 +312,85 @@ def background_process_job(job_id, temp_pdf_path, api_key_to_use, session_id):
         pdf_base_sanitized = secure_filename(temp_pdf_path.stem)
         zip_filename = f"{pdf_base_sanitized}_output.zip"
         zip_output_path = session_output_dir / zip_filename
-        individual_output_dir = session_output_dir / pdf_base_sanitized
+        final_output_dir = session_output_dir / pdf_base_sanitized
+        final_output_dir.mkdir(exist_ok=True)
 
-        # Process PDF
-        processed_pdf_base, markdown_content, image_filenames, md_path, img_dir = process_pdf(
-            temp_pdf_path, api_key_to_use, session_output_dir
-        )
+        # Check if file exceeds Mistral API limit
+        if temp_pdf_path.stat().st_size > mistral_max_mb * 1024 * 1024:
+            print(f"File exceeds {mistral_max_mb}MB, splitting before processing...")
+            split_files = split_pdf(temp_pdf_path, mistral_max_mb)
+            all_markdowns = []
+            all_images = []
+            image_counter = 1
+            image_rename_map = {}
 
-        # Delete the raw OCR JSON response before zipping
-        ocr_json_path = individual_output_dir / "ocr_response.json"
+            for idx, split_file in enumerate(split_files, 1):
+                print(f"Processing split part {idx}: {split_file.name}")
+                part_base, md_content, img_files, md_path, img_dir = process_pdf(
+                    split_file, api_key_to_use, session_output_dir
+                )
+                # Adjust image references in markdown
+                for img_file in img_files:
+                    old_path = img_dir / img_file
+                    new_img_name = f"{image_counter}{Path(img_file).suffix}"
+                    new_path = final_output_dir / new_img_name
+                    shutil.copy2(old_path, new_path)
+                    image_rename_map[img_file] = new_img_name
+                    image_counter += 1
+
+                # Update markdown image links
+                for old_name, new_name in image_rename_map.items():
+                    md_content = md_content.replace(f"({old_name})", f"({new_name})")
+
+                all_markdowns.append(md_content)
+
+                # Cleanup split part folder (optional)
+                try:
+                    split_folder = img_dir
+                    if split_folder.exists() and split_folder != final_output_dir:
+                        shutil.rmtree(split_folder)
+                except Exception as e:
+                    print(f"Warning: could not clean up split folder {split_folder}: {e}")
+
+            merged_markdown = "\n\n---\n\n".join(all_markdowns)
+            merged_md_path = final_output_dir / f"{pdf_base_sanitized}.md"
+            with open(merged_md_path, "w", encoding="utf-8") as f_md:
+                f_md.write(merged_markdown)
+            print(f"Merged markdown saved to {merged_md_path}")
+
+        else:
+            # Process normally
+            processed_pdf_base, markdown_content, image_filenames, md_path, img_dir = process_pdf(
+                temp_pdf_path, api_key_to_use, session_output_dir
+            )
+            # Move markdown and images into final_output_dir if not already there
+            if img_dir != final_output_dir:
+                for img_file in image_filenames:
+                    src = img_dir / img_file
+                    dst = final_output_dir / img_file
+                    shutil.copy2(src, dst)
+                shutil.copy2(md_path, final_output_dir / md_path.name)
+
+            # Delete the raw OCR JSON response before zipping
+            ocr_json_path = img_dir / "ocr_response.json"
+            try:
+                if ocr_json_path.is_file():
+                    ocr_json_path.unlink()
+                    print(f"  Deleted raw OCR JSON file: {ocr_json_path}")
+            except Exception as del_err:
+                print(f"  Warning: Could not delete OCR JSON file {ocr_json_path}: {del_err}")
+
+        # Delete the raw OCR JSON response in final_output_dir if exists
+        final_ocr_json = final_output_dir / "ocr_response.json"
         try:
-            if ocr_json_path.is_file():
-                ocr_json_path.unlink()
-                print(f"  Deleted raw OCR JSON file: {ocr_json_path}")
+            if final_ocr_json.is_file():
+                final_ocr_json.unlink()
+                print(f"  Deleted raw OCR JSON file: {final_ocr_json}")
         except Exception as del_err:
-            print(f"  Warning: Could not delete OCR JSON file {ocr_json_path}: {del_err}")
+            print(f"  Warning: Could not delete OCR JSON file {final_ocr_json}: {del_err}")
 
-        # Create ZIP (now without the JSON file)
-        create_zip_archive(individual_output_dir, zip_output_path)
+        # Create ZIP of the final output folder
+        create_zip_archive(final_output_dir, zip_output_path)
 
         # Cleanup upload dir
         try:
@@ -335,25 +398,17 @@ def background_process_job(job_id, temp_pdf_path, api_key_to_use, session_id):
                 shutil.rmtree(session_upload_dir)
                 print(f"  Cleaned up upload directory: {session_upload_dir}")
         except Exception as cleanup_err:
-             print(f"  Warning: Could not cleanup upload directory {session_upload_dir}: {cleanup_err}")
+            print(f"  Warning: Could not cleanup upload directory {session_upload_dir}: {cleanup_err}")
 
-
-        # Generate download URL *within* app context AFTER processing is done
+        # Generate download URL
         download_url = None
         try:
             with app.app_context():
-                # IMPORTANT: Set SERVER_NAME for url_for with _external=True
-                # This will be addressed in the next step (fixing URL generation)
-                # For now, generate relative URL for SSE message, full URL later if needed
-                # download_url = url_for('download_file', session_id=session_id, filename=zip_filename, _external=False) # Relative URL for now
-                # Let's try generating the URL directly for the SSE message, hoping SERVER_NAME is set
-                 download_url = url_for('download_file', session_id=session_id, filename=zip_filename, _external=True)
+                download_url = url_for('download_file', session_id=session_id, filename=zip_filename, _external=True)
         except RuntimeError as url_err:
-             print(f"  Error generating download URL (likely missing SERVER_NAME): {url_err}")
-             # If URL generation fails, we'll send 'done' without a URL,
-             # the client can construct it or we fix SERVER_NAME later.
-             _publish_status(job_id, 'error', {"error": f"Processing complete, but failed to generate download link: {url_err}. Please configure SERVER_NAME."})
-             return # Stop further processing for this job
+            print(f"  Error generating download URL: {url_err}")
+            _publish_status(job_id, 'error', {"error": f"Processing complete, but failed to generate download link: {url_err}. Please configure SERVER_NAME."})
+            return
 
         _publish_status(job_id, 'done', {"download_url": download_url})
 
