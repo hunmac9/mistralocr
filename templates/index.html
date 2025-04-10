@@ -19,10 +19,11 @@
 
     <section class="upload-section glassmorphism">
       <h2><i class="fas fa-upload"></i> Upload PDFs</h2>
-      <form action="/process" method="post" enctype="multipart/form-data">
+      <form action="/process" method="post" enctype="multipart/form-data" id="upload-form">
         <input type="file" name="pdf_files" accept=".pdf" multiple required>
-        <button type="submit">Upload and Convert</button>
+        <button type="submit" id="submit-btn">Upload and Convert</button>
       </form>
+      <div class="loader" id="loader" style="display:none;"></div>
       <small>Multiple files allowed. Max size: {{ max_upload_mb }} MB (auto-compresses if over {{ mistral_max_mb }} MB).</small>
     </section>
 
@@ -38,5 +39,11 @@
   </footer>
 
 </div>
+
+<script>
+document.getElementById('upload-form').addEventListener('submit', function() {
+  document.getElementById('loader').style.display = 'block';
+});
+</script>
 </body>
 </html>

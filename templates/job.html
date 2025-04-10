@@ -24,6 +24,10 @@
       <p>Job ID: {{ job_id }}</p>
       <p>Status: {{ status }}</p>
 
+      {% if status in ['queued', 'processing'] %}
+      <div class="loader"></div>
+      {% endif %}
+
       {% if status == 'done' %}
         <p><a href="{{ download_url }}" class="button"><i class="fas fa-download"></i> Download ZIP</a></p>
       {% elif status == 'error' %}
