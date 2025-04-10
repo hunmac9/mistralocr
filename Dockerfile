@@ -18,7 +18,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application code into the container
-COPY . .
+# Ensure permissions are set correctly for the non-root user later
+COPY --chown=appuser:appgroup . .
 
 # Make port 5009 available to the world outside this container
 # This is the default port used in app.py
@@ -29,6 +30,14 @@ EXPOSE 5009
 # ENV FLASK_APP=app.py # Not strictly needed when using gunicorn app:app format
 # ENV FLASK_RUN_HOST=0.0.0.0 # Used by flask run, gunicorn uses --bind
 # ENV FLASK_RUN_PORT=5009 # Used by flask run, gunicorn uses --bind
+
+# Define the command to run the application using Gunicorn
+# Bind to 0.0.0.0 to allow external connections to the container
+# Create a non-root user and group
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+
+# Switch to the non-root user
+USER appuser
 
 # Define the command to run the application using Gunicorn
 # Bind to 0.0.0.0 to allow external connections to the container

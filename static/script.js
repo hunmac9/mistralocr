@@ -67,17 +67,10 @@ document.addEventListener('DOMContentLoaded', () => {
         markdownTitle.textContent = 'Markdown Content';
         markdownSection.appendChild(markdownTitle);
 
-        let markdownForDisplay = resultItem.preview.markdown;
+        // Directly use the markdown content from the server result
+        const markdownForDisplay = resultItem.preview.markdown;
 
-        markdownForDisplay = markdownForDisplay.replace(
-            /!\[\[(.*?)\]\]/g,
-            (match, filename) => {
-                const imageUrl = `/view_image/${sessionId}/${resultItem.preview.pdf_base}/${filename.trim()}`;
-                const safeAltText = filename.trim().replace(/"/g, '"');
-                return `<img src="${imageUrl}" alt="${safeAltText}" style="max-width: 90%; height: auto; display: block; margin: 10px 0; border: 1px solid #ccc;">`;
-            }
-        );
-
+        // Use marked.js (if available) to render the markdown, including any image tags from Mistral
         if (typeof marked !== 'undefined') {
             const renderedMarkdownDiv = document.createElement('div');
             renderedMarkdownDiv.innerHTML = marked.parse(markdownForDisplay);
@@ -103,8 +96,8 @@ document.addEventListener('DOMContentLoaded', () => {
             resultItem.preview.images.forEach(imageFilename => {
                 const img = document.createElement('img');
                 img.src = `/view_image/${sessionId}/${resultItem.preview.pdf_base}/${imageFilename}`;
-                const safeAltText = imageFilename.replace(/"/g, '"');
-                img.alt = safeAltText;
+                // Use the raw filename as alt text
+                img.alt = imageFilename;
                 img.style.maxWidth = '150px';
                 img.style.height = 'auto';
                 img.style.margin = '5px';

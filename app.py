@@ -3,7 +3,7 @@ import json
 import base64
 import shutil
 import zipfile
-import re # Import regex module
+# import re # No longer needed
 from pathlib import Path
 from uuid import uuid4
 from flask import Flask, request, render_template, jsonify, send_from_directory, url_for
@@ -12,16 +12,7 @@ from mistralai.models import OCRResponse
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
-load_dotenv()
-
-print("--- .env Loading Debug ---")
-dotenv_api_key = os.getenv("MISTRAL_API_KEY")
-if dotenv_api_key:
-    print(f"API Key loaded from .env (first 4 chars): {dotenv_api_key[:4]}...")
-else:
-    print("API Key NOT loaded from .env. Check .env file and setup.")
-print("--- End .env Debug ---")
-
+load_dotenv() # Load environment variables from .env file
 
 app = Flask(__name__)
 
@@ -61,18 +52,19 @@ def process_pdf(pdf_path: Path, api_key: str, session_output_dir: Path) -> tuple
 
     client = Mistral(api_key=api_key)
     ocr_response: OCRResponse | None = None
-    uploaded_file = None # Initialize uploaded_file
+    uploaded_file_id = None # Store only the ID for cleanup
 
     try:
         print(f"  Uploading {pdf_path.name} to Mistral...")
         with open(pdf_path, "rb") as f:
             pdf_bytes = f.read()
-        uploaded_file = client.files.upload(
+        mistral_file = client.files.upload(
             file={"file_name": pdf_path.name, "content": pdf_bytes}, purpose="ocr"
         )
+        uploaded_file_id = mistral_file.id # Store ID for cleanup
 
-        print(f"  File uploaded (ID: {uploaded_file.id}). Getting signed URL...")
-        signed_url = client.files.get_signed_url(file_id=uploaded_file.id, expiry=60)
+        print(f"  File uploaded (ID: {uploaded_file_id}). Getting signed URL...")
+        signed_url = client.files.get_signed_url(file_id=uploaded_file_id, expiry=60)
 
         print(f"  Calling OCR API...")
         ocr_response = client.ocr.process(
@@ -132,8 +124,9 @@ def process_pdf(pdf_path: Path, api_key: str, session_output_dir: Path) -> tuple
                      print(f"  Warning: Could not write image file {image_output_path}: {io_err}")
                      continue
 
-            # Directly use the markdown from the page, assuming it contains standard links or placeholders
-            updated_markdown_pages.append(current_page_markdown) # Removed the replacement call
+            # Directly use the markdown from the page.
+            # Assuming Mistral provides usable links or placeholders.
+            updated_markdown_pages.append(current_page_markdown)
 
         final_markdown_content = "\n\n---\n\n".join(updated_markdown_pages) # Page separator
         output_markdown_path = pdf_output_dir / f"{pdf_base_sanitized}_output.md"
@@ -144,13 +137,6 @@ def process_pdf(pdf_path: Path, api_key: str, session_output_dir: Path) -> tuple
             print(f"  Markdown generated successfully at {output_markdown_path}")
         except IOError as io_err:
             raise Exception(f"Failed to write final markdown file: {io_err}") from io_err
-
-        # Clean up Mistral file
-        try:
-            client.files.delete(file_id=uploaded_file.id)
-            print(f"  Deleted temporary file {uploaded_file.id} from Mistral.")
-        except Exception as delete_err: # Catch general Exception
-            print(f"  Warning: Could not delete file {uploaded_file.id} from Mistral: {delete_err}")
 
         # Return the actual content and image list now
         return pdf_base_sanitized, final_markdown_content, extracted_image_filenames, output_markdown_path, images_dir
@@ -166,13 +152,20 @@ def process_pdf(pdf_path: Path, api_key: str, session_output_dir: Path) -> tuple
             except Exception:
                 error_msg = error_str
         else:
-            error_msg = error_str
+            error_msg = error_str # Use the raw error string if no JSON found
         print(f"  Error processing {pdf_path.name}: {error_msg}")
-        # Attempt cleanup even on error
-        if uploaded_file:
-            try: client.files.delete(file_id=uploaded_file.id)
-            except Exception: pass
-        raise Exception(error_msg)
+        # No need for separate cleanup here, finally block handles it
+        raise Exception(error_msg) # Re-raise the simplified error message
+    finally:
+        # Ensure the uploaded file is deleted from Mistral even if errors occur
+        if uploaded_file_id:
+            try:
+                print(f"  Attempting to delete temporary file {uploaded_file_id} from Mistral...")
+                client.files.delete(file_id=uploaded_file_id)
+                print(f"  Deleted temporary file {uploaded_file_id} from Mistral.")
+            except Exception as delete_err:
+                # Log warning but don't let cleanup failure hide the original error
+                print(f"  Warning: Could not delete file {uploaded_file_id} from Mistral: {delete_err}")
 
 
 def create_zip_archive(source_dir: Path, output_zip_path: Path):
@@ -205,16 +198,11 @@ def handle_process():
     api_key = request.form.get('api_key')
 
     if not api_key:
-        print("API Key from web form is empty.")
-        # Check if we have a fallback API key from .env (or elsewhere - server-side config)
-        api_key_fallback = os.getenv("MISTRAL_API_KEY") # Try to get from env again
-        if api_key_fallback:
-            api_key = api_key_fallback
-            print(f"Using fallback API Key from environment (first 4 chars): {api_key[:4]}...") # Debug print
-        else:
-            return jsonify({"error": "Mistral API Key is required"}), 400
-    else:
-        print(f"API Key from web form (first 4 chars): {api_key[:4]}...") # Debug print
+        # Check if we have a fallback API key from .env
+        api_key = os.getenv("MISTRAL_API_KEY") # Use environment variable if form field is empty
+        if not api_key:
+             # Only return error if neither form nor env var has the key
+            return jsonify({"error": "Mistral API Key is required (provide in form or set MISTRAL_API_KEY env var)"}), 400
 
     if not files or all(f.filename == '' for f in files):
          return jsonify({"error": "No selected PDF files"}), 400
