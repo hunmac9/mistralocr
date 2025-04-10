@@ -1,165 +1,172 @@
-/* General Reset and Base Styles */
+/* Silicon Valley Inspired - Clean & Modern Dark Theme */
 :root {
-  --bg-color: #1a1a1a; /* Dark background */
-  --text-color: #e0e0e0; /* Light text */
-  --primary-color: #4a90e2; /* A modern blue */
-  --primary-hover-color: #357abd;
-  --secondary-bg-color: #2c2c2c; /* Slightly lighter dark for containers */
-  --border-color: #444; /* Darker border */
-  --input-bg-color: #333;
-  --input-text-color: #e0e0e0;
-  --link-color: #58a6ff; /* Brighter blue for links */
-  --link-hover-color: #79b8ff;
-  --error-color: #f85149;
-  --success-color: #2ea043;
+  --bg-color: #121212; /* Very dark background */
+  --text-color: #e1e1e1; /* Off-white text */
+  --text-secondary-color: #b3b3b3; /* Lighter gray for secondary text */
+  --primary-color: #007aff; /* Apple's blue - vibrant */
+  --primary-hover-color: #005ecb; /* Darker blue on hover */
+  --container-bg-color: #1e1e1e; /* Dark gray for containers */
+  --section-bg-color: #282828; /* Slightly lighter gray for sections */
+  --input-bg-color: #333333;
+  --input-border-color: #444444;
+  --input-focus-border-color: var(--primary-color);
+  --input-focus-shadow: rgba(0, 122, 255, 0.25);
+  --link-color: var(--primary-color);
+  --link-hover-color: #58a6ff; /* Lighter blue for link hover */
+  --error-color: #ff3b30; /* Apple's red */
+  --success-color: #34c759; /* Apple's green */
   --loader-color: var(--primary-color);
-  --shadow-color: rgba(0, 0, 0, 0.4);
-  --tagline-color: #aaa;
+  --shadow-color: rgba(0, 0, 0, 0.5);
+  --border-color: #3a3a3a; /* Subtle border color */
   --footer-text-color: #888;
-  --footer-icon-color: #888;
-  --footer-icon-hover-color: var(--link-color);
-  --section-bg-color: #252525; /* Background for sections like form, status */
-  --pre-bg-color: #1e1e1e; /* Background for code/pre blocks */
-  --pre-border-color: var(--border-color);
-  --download-item-bg: var(--secondary-bg-color);
-  --download-item-border: var(--border-color);
+
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
 }
 
-* {
+/* Global Resets & Base Styles */
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
+html {
+  font-size: 16px; /* Base font size */
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-sans);
   background-color: var(--bg-color);
   color: var(--text-color);
   line-height: 1.6;
-  padding: 20px;
-  transition: background-color 0.3s, color 0.3s;
+  padding: 2rem;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
 }
 
-/* Container */
+/* Main Container */
 .container {
-  max-width: 900px;
-  margin: 40px auto;
-  background-color: var(--secondary-bg-color);
-  padding: 40px;
-  border-radius: 12px;
-  box-shadow: 0 8px 25px var(--shadow-color);
+  max-width: 800px; /* Slightly narrower for focus */
+  margin: 3rem auto;
+  background-color: var(--container-bg-color);
+  padding: 3rem;
+  border-radius: 16px; /* More rounded corners */
+  box-shadow: 0 12px 30px var(--shadow-color);
   border: 1px solid var(--border-color);
 }
 
 /* Header */
 header {
   text-align: center;
-  margin-bottom: 40px;
+  margin-bottom: 3rem;
+  padding-bottom: 1.5rem;
   border-bottom: 1px solid var(--border-color);
-  padding-bottom: 20px;
 }
 
 header h1 {
-  color: var(--primary-color);
-  font-size: 2.8em;
-  font-weight: 600;
-  margin-bottom: 15px;
+  color: var(--text-color); /* Use main text color for title */
+  font-size: 2.5rem; /* Slightly smaller */
+  font-weight: 700; /* Bolder */
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.5px;
 }
 
 .tagline {
-  font-size: 1.2em;
-  color: var(--tagline-color);
+  font-size: 1.1rem;
+  color: var(--text-secondary-color);
 }
 
-/* Main Sections */
+/* Sections */
 main section {
-  margin-bottom: 40px;
-  padding: 25px;
+  margin-bottom: 3rem;
+  padding: 2rem;
   background-color: var(--section-bg-color);
-  border-radius: 8px;
+  border-radius: 12px; /* Consistent rounding */
   border: 1px solid var(--border-color);
 }
 
 main section h2 {
-    margin-bottom: 20px;
-    font-size: 1.6em;
-    color: var(--primary-color);
+    margin-bottom: 1.5rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-color);
     border-bottom: 1px solid var(--border-color);
-    padding-bottom: 10px;
+    padding-bottom: 0.75rem;
 }
 
-.form-section {
-  /* Inherits section styles */
-}
-
+/* Form Styling */
 .form-group {
-  margin-bottom: 25px;
+  margin-bottom: 1.75rem;
 }
 
 label {
   display: block;
-  font-weight: 600;
-  margin-bottom: 10px;
-  color: var(--text-color);
-  font-size: 1.1em;
+  font-weight: 500; /* Medium weight */
+  margin-bottom: 0.75rem;
+  color: var(--text-secondary-color);
+  font-size: 0.95rem;
 }
 
 input[type="password"],
 input[type="text"],
 input[type="file"] {
   width: 100%;
-  padding: 12px 15px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 1em;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--input-border-color);
+  border-radius: 8px; /* Softer rounding */
+  font-size: 1rem;
   background-color: var(--input-bg-color);
-  color: var(--input-text-color);
-  transition: border-color 0.3s, box-shadow 0.3s;
+  color: var(--text-color);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  font-family: inherit; /* Ensure consistent font */
 }
 
 input[type="password"]:focus,
 input[type="text"]:focus,
 input[type="file"]:focus {
   outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.3); /* Focus ring */
+  border-color: var(--input-focus-border-color);
+  box-shadow: 0 0 0 3px var(--input-focus-shadow);
 }
 
 input[type="file"] {
-  padding: 8px 10px;
+  padding: 0.5rem 0.75rem; /* Adjust padding for file input */
   cursor: pointer;
 }
 
-/* Style file input button */
 input[type="file"]::file-selector-button {
     background-color: var(--primary-color);
-    color: #fff;
-    padding: 8px 15px;
+    color: #ffffff;
+    padding: 0.6rem 1rem;
     border: none;
-    border-radius: 4px;
+    border-radius: 6px;
     cursor: pointer;
-    font-size: 0.9em;
-    transition: background-color 0.3s ease;
-    margin-right: 10px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: background-color 0.2s ease;
+    margin-right: 1rem;
 }
 
 input[type="file"]::file-selector-button:hover {
     background-color: var(--primary-hover-color);
 }
 
-
+/* Password Toggle */
 .password-toggle-group {
   display: flex;
   align-items: center;
-  position: relative; /* Needed for potential absolute positioning of toggle */
+  position: relative;
 }
 
 .password-toggle-group input[type="password"] {
-    padding-right: 40px; /* Space for the toggle */
+    padding-right: 50px; /* More space for toggle text */
 }
 
 .password-toggle-group input[type="checkbox"] {
-    /* Hide the default checkbox */
     opacity: 0;
     position: absolute;
     width: 1px;
@@ -168,72 +175,75 @@ input[type="file"]::file-selector-button:hover {
 
 .toggle-label {
   position: absolute;
-  right: 10px;
+  right: 12px;
   top: 50%;
   transform: translateY(-50%);
   cursor: pointer;
-  font-weight: normal;
-  color: var(--tagline-color);
-  user-select: none; /* Prevent text selection */
-  padding: 5px;
+  font-weight: 500;
+  font-size: 0.85rem;
+  color: var(--text-secondary-color);
+  user-select: none;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: color 0.2s ease, background-color 0.2s ease;
 }
 
 .toggle-label:hover {
     color: var(--text-color);
+    background-color: rgba(255, 255, 255, 0.1);
 }
 
-/* Show/Hide text based on checkbox state */
-#api-key-toggle:not(:checked) + .toggle-label::after {
-    content: 'Show';
-}
-#api-key-toggle:checked + .toggle-label::after {
-    content: 'Hide';
-}
+#api-key-toggle:not(:checked) + .toggle-label::after { content: 'Show'; }
+#api-key-toggle:checked + .toggle-label::after { content: 'Hide'; }
 
-
-button#submit-btn { /* More specific selector */
+/* Submit Button */
+button#submit-btn {
   background-color: var(--primary-color);
-  color: #fff;
-  padding: 14px 30px;
+  color: #ffffff;
+  padding: 0.9rem 1.5rem;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
-  font-size: 1.15em;
+  font-size: 1.05rem;
   font-weight: 600;
-  transition: background-color 0.3s ease, transform 0.1s ease;
-  display: block; /* Make button block level */
-  width: 100%; /* Full width */
-  margin-top: 10px;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  display: block;
+  width: 100%;
+  margin-top: 1rem;
 }
 
 button#submit-btn:hover {
   background-color: var(--primary-hover-color);
-  transform: translateY(-1px); /* Subtle lift */
+  transform: translateY(-2px); /* Slightly more lift */
+  box-shadow: 0 4px 10px rgba(0, 122, 255, 0.2);
 }
 
 button#submit-btn:active {
-    transform: translateY(0px); /* Press down effect */
+    transform: translateY(0px);
+    box-shadow: none;
 }
-
 
 button:disabled {
-  background-color: #555; /* Darker disabled state */
-  color: #999;
+  background-color: #444; /* Adjusted disabled state */
+  color: #888;
   cursor: not-allowed;
   transform: none;
+  box-shadow: none;
 }
 
+/* Helper Text */
 small {
   display: block;
-  margin-top: 8px;
-  font-size: 0.9em;
-  color: var(--tagline-color);
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary-color);
 }
 
+/* Links */
 a {
   color: var(--link-color);
   text-decoration: none;
-  transition: color 0.3s ease;
+  transition: color 0.2s ease;
 }
 
 a:hover {
@@ -241,44 +251,43 @@ a:hover {
   text-decoration: underline;
 }
 
-/* Status, Results, Preview, and Error Areas */
-.status-section,
-.results-section,
-.preview-section,
-.error-section {
-  /* Inherits section styles */
-}
-
+/* Status, Results, Preview, Error Areas */
 #status-log,
-#error-message {
+#error-message,
+.markdown-preview pre {
   white-space: pre-wrap;
   word-wrap: break-word;
-  max-height: 350px;
+  max-height: 400px; /* Increased max height */
   overflow-y: auto;
-  background-color: var(--pre-bg-color);
-  color: var(--text-color);
-  padding: 15px;
-  border: 1px solid var(--pre-border-color);
-  border-radius: 6px;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
-  font-size: 0.95em;
-  line-height: 1.5;
+  background-color: var(--input-bg-color); /* Use input background for consistency */
+  color: var(--text-secondary-color);
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+#status-log {
+  color: var(--text-color); /* Status log can be primary text color */
 }
 
 #error-message {
     color: var(--error-color);
-    border-color: var(--error-color);
+    border-color: rgba(255, 59, 48, 0.5); /* Softer error border */
+    background-color: rgba(255, 59, 48, 0.1); /* Slight red background */
 }
 
 /* Loader */
 .loader {
-  border: 4px solid rgba(255, 255, 255, 0.2); /* Lighter border for dark mode */
+  border: 4px solid rgba(255, 255, 255, 0.15);
   border-top: 4px solid var(--loader-color);
   border-radius: 50%;
-  width: 35px;
-  height: 35px;
-  animation: spin 1s linear infinite;
-  margin: 20px auto; /* More spacing */
+  width: 30px; /* Slightly smaller */
+  height: 30px;
+  animation: spin 0.8s linear infinite;
+  margin: 1.5rem auto;
 }
 
 @keyframes spin {
@@ -293,89 +302,82 @@ a:hover {
 }
 
 #download-links li {
-  background-color: var(--download-item-bg);
-  padding: 15px 20px;
-  border: 1px solid var(--download-item-border);
-  border-radius: 6px;
-  margin-bottom: 12px;
+  background-color: transparent; /* Remove background */
+  padding: 1rem 0; /* Vertical padding only */
+  border: none; /* Remove border */
+  border-bottom: 1px solid var(--border-color); /* Use bottom border as separator */
+  margin-bottom: 0; /* Remove margin */
   display: flex;
   align-items: center;
   justify-content: space-between;
-  transition: background-color 0.3s;
+  transition: background-color 0.2s ease;
+}
+
+#download-links li:last-child {
+    border-bottom: none; /* No border for the last item */
 }
 
 #download-links li:hover {
-    background-color: #383838; /* Slightly lighter on hover */
+    background-color: rgba(255, 255, 255, 0.05); /* Subtle hover */
 }
 
-
 #download-links a {
-  font-weight: 600;
+  font-weight: 500;
   color: var(--link-color);
+  display: inline-flex; /* Align icon and text */
+  align-items: center;
+  gap: 0.5rem; /* Space between icon and text */
+}
+
+#download-links a::before {
+  content: '\f019'; /* FontAwesome download icon */
+  font-family: "Font Awesome 6 Free";
+  font-weight: 900;
+  font-size: 0.9em;
 }
 
 /* Preview Section */
-.preview-section {
-  /* Inherits section styles */
-}
-
 #preview-content .preview-item {
-  background-color: var(--secondary-bg-color);
+  background-color: var(--container-bg-color); /* Match main container bg */
   border: 1px solid var(--border-color);
-  border-radius: 6px;
-  padding: 20px;
-  margin-bottom: 25px;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
 }
 
 #preview-content h3 {
-  color: var(--primary-color);
-  border-bottom: 1px solid var(--border-color);
-  padding-bottom: 10px;
-  margin-bottom: 20px;
-  font-size: 1.3em;
-}
-
-.markdown-preview pre {
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  max-height: 450px;
-  overflow-y: auto;
-  background-color: var(--pre-bg-color);
   color: var(--text-color);
-  padding: 15px;
-  border-radius: 6px;
-  border: 1px solid var(--pre-border-color);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
-  font-size: 0.95em;
-  line-height: 1.5;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.75rem;
+  margin-bottom: 1.5rem;
+  font-size: 1.2rem;
+  font-weight: 600;
 }
 
 /* Footer */
 footer {
   text-align: center;
-  padding: 30px 10px;
+  padding: 2rem 1rem;
   border-top: 1px solid var(--border-color);
-  margin-top: 50px;
+  margin-top: 4rem;
   color: var(--footer-text-color);
-  font-size: 0.95em;
+  font-size: 0.9rem;
 }
 
 footer p {
-  margin-bottom: 15px;
+  margin-bottom: 0; /* Remove margin if only one line */
 }
 
+/* Remove social icons styling as they will be removed from HTML */
 footer .social-icons a {
-  margin: 0 10px;
-  color: var(--footer-icon-color);
-  font-size: 1.6em;
-  transition: color 0.3s ease;
+ display: none;
 }
 
-footer .social-icons a:hover {
-  color: var(--footer-icon-hover-color);
-}
 
 /* Utility class for hiding elements */
 .hidden {
     display: none !important;
 }
+
+/* Add Inter font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');

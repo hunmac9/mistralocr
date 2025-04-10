@@ -3,7 +3,6 @@ import json
 import base64
 import shutil
 import zipfile
-# import re # No longer needed
 from pathlib import Path
 from uuid import uuid4
 from flask import Flask, request, render_template, jsonify, send_from_directory, url_for
@@ -294,7 +293,7 @@ def handle_process():
         # Return session_id along with results for constructing image URLs on frontend
         return jsonify({
             "success": True,
-            "session_id": session_id, # ADDED session_id here
+            "session_id": session_id,
             "results": processed_files_results, # Renamed from 'downloads'
             "errors": processing_errors
         }), 200
