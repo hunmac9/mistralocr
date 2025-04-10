@@ -6,12 +6,10 @@
 <title>Job Status - PDF to Markdown OCR</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" />
-{% if status in ['queued', 'processing'] %}
-<meta http-equiv="refresh" content="3">
-{% endif %}
+<!-- Removed meta refresh tag -->
 </head>
 <body>
-<div class="app-container glassmorphism">
+<!-- Removed app-container div -->
 
   <header class="app-header fade-in">
     <h1><i class="fas fa-file-pdf"></i> PDF to Markdown</h1>
@@ -19,22 +17,26 @@
 
   <main class="app-main fade-in">
 
-    <section class="status-section glassmorphism fade-in">
+    <section class="status-section fade-in"> <!-- Removed glassmorphism -->
       <h2><i class="fas fa-info-circle"></i> Job Status</h2>
-      <p>Job ID: {{ job_id }}</p>
-      <p>Status: {{ status }}</p>
+      <p>Job ID: <span id="job-id">{{ job_id }}</span></p>
+      <p>Status: <span id="status-text">{{ status }}</span></p>
 
-      {% if status in ['queued', 'processing'] %}
-      <div class="loader"></div>
-      {% endif %}
+      <div id="loader-container">
+        {% if status in ['queued', 'processing'] %}
+        <div class="loader"></div>
+        {% endif %}
+      </div>
 
-      {% if status == 'done' %}
-        <p><a href="{{ download_url }}" class="button"><i class="fas fa-download"></i> Download ZIP</a></p>
-      {% elif status == 'error' %}
-        <p class="error">Error: {{ error }}</p>
-      {% else %}
-        <p>Please wait... This page will refresh automatically.</p>
-      {% endif %}
+      <div id="result-container">
+        {% if status == 'done' %}
+          <p><a href="{{ download_url }}" class="button"><i class="fas fa-download"></i> Download ZIP</a></p>
+        {% elif status == 'error' %}
+          <p class="error">Error: {{ error }}</p>
+        {% else %}
+          <p id="wait-message">Please wait...</p>
+        {% endif %}
+      </div>
 
       <p><a href="{{ url_for('index') }}">Start another conversion</a></p>
     </section>
@@ -45,6 +47,53 @@
     <p>&copy; 2025. Licensed under MPL 2.0.</p>
   </footer>
 
-</div>
+<!-- Removed closing app-container div -->
+
+<script>
+  const jobId = document.getElementById('job-id').textContent;
+  const statusText = document.getElementById('status-text');
+  const loaderContainer = document.getElementById('loader-container');
+  const resultContainer = document.getElementById('result-container');
+  const waitMessage = document.getElementById('wait-message');
+
+  const eventSource = new EventSource(`/stream/${jobId}`);
+
+  eventSource.onmessage = function(event) {
+    const data = JSON.parse(event.data);
+    console.log("SSE Received:", data); // For debugging
+
+    statusText.textContent = data.status;
+
+    // Clear previous results/messages
+    loaderContainer.innerHTML = '';
+    resultContainer.innerHTML = '';
+    if (waitMessage) waitMessage.style.display = 'none';
+
+    if (data.status === 'queued' || data.status === 'processing') {
+      loaderContainer.innerHTML = '<div class="loader"></div>';
+      resultContainer.innerHTML = '<p id="wait-message">Please wait...</p>';
+    } else if (data.status === 'done') {
+      if (data.download_url) {
+        resultContainer.innerHTML = `<p><a href="${data.download_url}" class="button"><i class="fas fa-download"></i> Download ZIP</a></p>`;
+      } else {
+         // Handle case where URL generation failed but processing succeeded
+         resultContainer.innerHTML = `<p class="error">Processing finished, but download link is unavailable. Check server logs.</p>`;
+      }
+      eventSource.close(); // Close connection once done
+    } else if (data.status === 'error') {
+      resultContainer.innerHTML = `<p class="error">Error: ${data.error || 'An unknown error occurred.'}</p>`;
+      eventSource.close(); // Close connection on error
+    }
+  };
+
+  eventSource.onerror = function(err) {
+    console.error("EventSource failed:", err);
+    statusText.textContent = 'error';
+    loaderContainer.innerHTML = '';
+    resultContainer.innerHTML = '<p class="error">Connection error. Could not get status updates.</p>';
+    eventSource.close();
+  };
+
+</script>
 </body>
 </html>

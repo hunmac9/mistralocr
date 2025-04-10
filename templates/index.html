@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" />
 </head>
 <body>
-<div class="app-container glassmorphism">
+<!-- Removed app-container div -->
 
   <header class="app-header fade-in">
     <h1><i class="fas fa-file-pdf"></i> PDF to Markdown</h1>
@@ -17,7 +17,7 @@
 
   <main class="app-main fade-in">
 
-    <section class="upload-section glassmorphism">
+    <section class="upload-section"> <!-- Removed glassmorphism -->
       <h2><i class="fas fa-upload"></i> Upload PDFs</h2>
       <form action="/process" method="post" enctype="multipart/form-data" id="upload-form">
         <input type="file" name="pdf_files" accept=".pdf" multiple required>
@@ -27,7 +27,7 @@
       <small>Multiple files allowed. Max size: {{ max_upload_mb }} MB (auto-compresses if over {{ mistral_max_mb }} MB).</small>
     </section>
 
-    <section class="status-section glassmorphism fade-in">
+    <section class="status-section fade-in"> <!-- Removed glassmorphism -->
       <h2><i class="fas fa-info-circle"></i> Instructions</h2>
       <p>Select your PDF files and click "Upload and Convert". You will be redirected to a status page that updates automatically.</p>
     </section>
@@ -38,7 +38,7 @@
     <p>&copy; 2025. Licensed under MPL 2.0.</p>
   </footer>
 
-</div>
+<!-- Removed closing app-container div -->
 
 <script>
 document.getElementById('upload-form').addEventListener('submit', function() {

@@ -7,9 +7,10 @@ import json
 import base64
 import shutil
 import zipfile
+import queue # Added for SSE
 from pathlib import Path
 from uuid import uuid4
-from flask import Flask, request, render_template, jsonify, send_from_directory, url_for, redirect
+from flask import Flask, request, render_template, jsonify, send_from_directory, url_for, redirect, Response # Added Response for SSE
 import threading
 import time
 from mistralai import Mistral, DocumentURLChunk
@@ -22,6 +23,13 @@ load_dotenv() # Load environment variables from .env file
 app = Flask(__name__)
 
 # --- Configuration ---
+# Set SERVER_NAME for absolute URL generation (required for _external=True in url_for)
+# Use environment variable or default for local dev/docker.
+app.config['SERVER_NAME'] = os.getenv('SERVER_NAME', 'localhost:5009')
+# Ensure other relevant configs are set if needed (though usually handled by SERVER_NAME)
+# app.config['APPLICATION_ROOT'] = os.getenv('APPLICATION_ROOT', '/')
+# app.config['PREFERRED_URL_SCHEME'] = os.getenv('PREFERRED_URL_SCHEME', 'http')
+
 UPLOAD_FOLDER = Path(os.getenv('UPLOAD_FOLDER', 'uploads'))
 OUTPUT_FOLDER = Path(os.getenv('OUTPUT_FOLDER', 'output'))
 try:
@@ -268,14 +276,29 @@ def create_zip_archive(source_dir: Path, output_zip_path: Path):
         raise
 
 
-# --- Global job store ---
+# --- Global job store & SSE Queues ---
 jobs = {}
+job_queues = {} # Stores message queues for SSE updates per job_id
 jobs_lock = threading.Lock()
+
+def _publish_status(job_id, status, data=None):
+    """Helper to update job status and push to SSE queue."""
+    with jobs_lock:
+        if job_id not in jobs: return # Job might have been cancelled or timed out
+        jobs[job_id]['status'] = status
+        if data:
+            jobs[job_id].update(data)
+
+        # Push update to the SSE queue for this job
+        if job_id in job_queues:
+            update_message = {"status": status}
+            if data:
+                update_message.update(data)
+            job_queues[job_id].put(json.dumps(update_message)) # Send JSON string
 
 # --- Background worker function ---
 def background_process_job(job_id, temp_pdf_path, api_key_to_use, session_id):
-    with jobs_lock:
-        jobs[job_id]['status'] = 'processing'
+    _publish_status(job_id, 'processing')
     try:
         session_upload_dir = UPLOAD_FOLDER / session_id
         session_output_dir = OUTPUT_FOLDER / session_id
@@ -295,22 +318,40 @@ def background_process_job(job_id, temp_pdf_path, api_key_to_use, session_id):
         # Create ZIP
         create_zip_archive(individual_output_dir, zip_output_path)
 
-        # Cleanup upload dir
+        # Cleanup upload dir (moved earlier to ensure it runs even if zip/url fails)
         try:
-            shutil.rmtree(session_upload_dir)
-        except Exception:
-            pass
+            if session_upload_dir.exists():
+                shutil.rmtree(session_upload_dir)
+                print(f"  Cleaned up upload directory: {session_upload_dir}")
+        except Exception as cleanup_err:
+             print(f"  Warning: Could not cleanup upload directory {session_upload_dir}: {cleanup_err}")
 
-        with app.app_context():
-            download_url = url_for('download_file', session_id=session_id, filename=zip_filename, _external=True)
 
-        with jobs_lock:
-            jobs[job_id]['status'] = 'done'
-            jobs[job_id]['download_url'] = download_url
+        # Generate download URL *within* app context AFTER processing is done
+        download_url = None
+        try:
+            with app.app_context():
+                # IMPORTANT: Set SERVER_NAME for url_for with _external=True
+                # This will be addressed in the next step (fixing URL generation)
+                # For now, generate relative URL for SSE message, full URL later if needed
+                # download_url = url_for('download_file', session_id=session_id, filename=zip_filename, _external=False) # Relative URL for now
+                # Let's try generating the URL directly for the SSE message, hoping SERVER_NAME is set
+                 download_url = url_for('download_file', session_id=session_id, filename=zip_filename, _external=True)
+        except RuntimeError as url_err:
+             print(f"  Error generating download URL (likely missing SERVER_NAME): {url_err}")
+             # If URL generation fails, we'll send 'done' without a URL,
+             # the client can construct it or we fix SERVER_NAME later.
+             _publish_status(job_id, 'error', {"error": f"Processing complete, but failed to generate download link: {url_err}. Please configure SERVER_NAME."})
+             return # Stop further processing for this job
+
+        _publish_status(job_id, 'done', {"download_url": download_url})
+
     except Exception as e:
-        with jobs_lock:
-            jobs[job_id]['status'] = 'error'
-            jobs[job_id]['error'] = str(e)
+        _publish_status(job_id, 'error', {"error": str(e)})
+    finally:
+        # Signal end of stream by putting None or a specific marker
+        if job_id in job_queues:
+            job_queues[job_id].put(None) # Signal completion to the SSE generator
 
 # --- Flask Routes ---
 
@@ -340,42 +381,84 @@ def handle_process():
     if not files or all(f.filename == '' for f in files):
         return jsonify({"error": "No selected PDF files"}), 400
 
-    # For simplicity, handle only the first valid PDF file asynchronously
+    # Handle only the first valid PDF file asynchronously
+    processed_file = False
     for f in files:
         if f and allowed_file(f.filename):
             job_id = str(uuid4())
+            session_id = str(uuid4()) # Generate session ID here
+
+            # Initialize job status and SSE queue
             with jobs_lock:
-                jobs[job_id] = {"status": "queued", "download_url": None, "error": None}
+                jobs[job_id] = {"status": "queued", "download_url": None, "error": None, "session_id": session_id}
+                job_queues[job_id] = queue.Queue() # Create a queue for this job's updates
 
-            # Save uploaded file immediately before starting background thread
-            session_id = str(uuid4())
-            session_upload_dir = UPLOAD_FOLDER / session_id
-            session_upload_dir.mkdir(parents=True, exist_ok=True)
-            filename_sanitized = secure_filename(f.filename)
-            temp_pdf_path = session_upload_dir / filename_sanitized
-            f.save(temp_pdf_path)
+            # Save uploaded file immediately
+            try:
+                session_upload_dir = UPLOAD_FOLDER / session_id
+                session_upload_dir.mkdir(parents=True, exist_ok=True)
+                filename_sanitized = secure_filename(f.filename)
+                temp_pdf_path = session_upload_dir / filename_sanitized
+                f.save(temp_pdf_path)
+            except Exception as save_err:
+                 with jobs_lock: # Clean up job entry if save fails
+                     if job_id in jobs: del jobs[job_id]
+                     if job_id in job_queues: del job_queues[job_id]
+                 return jsonify({"error": f"Failed to save uploaded file: {save_err}"}), 500
 
-            # Start background thread, pass path and session_id
+            # Publish initial 'queued' status via SSE immediately after setup
+            _publish_status(job_id, 'queued')
+
+            # Start background thread
             t = threading.Thread(target=background_process_job, args=(job_id, temp_pdf_path, api_key_to_use, session_id))
+            t.daemon = True # Allow app to exit even if threads are running (optional)
             t.start()
+            processed_file = True
+            # Redirect to the job page, which will connect to SSE
             return redirect(url_for('job_status', job_id=job_id))
 
-    return jsonify({"error": "No valid PDF files found."}), 400
+    if not processed_file:
+        return jsonify({"error": "No valid PDF files found or failed to process."}), 400
 
-@app.route('/status/<job_id>', methods=['GET'])
-def check_status(job_id):
-    with jobs_lock:
-        job = jobs.get(job_id)
-        if not job:
-            return jsonify({"error": "Invalid job ID"}), 404
-        response = {"status": job['status']}
-        if job['status'] == 'done':
-            response['download_url'] = job['download_url']
-        if job['status'] == 'error':
-            response['error'] = job['error']
-        return jsonify(response), 200
+# Removed old /status/<job_id> route
 
-# --- NEW ROUTE for serving images ---
+# --- SSE Stream Route ---
+@app.route('/stream/<job_id>')
+def stream(job_id):
+    def event_stream():
+        q = job_queues.get(job_id)
+        if not q:
+            # Maybe the job finished very quickly or ID is invalid
+            with jobs_lock:
+                job = jobs.get(job_id)
+                if job: # If job exists, send its final state
+                    yield f"data: {json.dumps(job)}\n\n"
+                else: # Job doesn't exist
+                    yield f"data: {json.dumps({'status': 'error', 'error': 'Invalid or expired job ID'})}\n\n"
+            return # End stream
+
+        try:
+            while True:
+                message = q.get(timeout=30) # Wait for updates, timeout to prevent hanging
+                if message is None: # End of stream signal from worker
+                    break
+                yield f"data: {message}\n\n" # SSE format: data: <json_string>\n\n
+        except queue.Empty:
+            # Timeout occurred, client might have disconnected or worker is stuck
+            print(f"SSE stream timeout for job {job_id}")
+        finally:
+            # Clean up the queue for this job_id when the client disconnects or stream ends
+            with jobs_lock:
+                if job_id in job_queues:
+                    del job_queues[job_id]
+                    print(f"Cleaned up SSE queue for job {job_id}")
+                # Optionally clean up the job entry itself after a delay?
+                # For now, keep job entry for potential later access via job_status page reload
+
+    return Response(event_stream(), mimetype="text/event-stream")
+
+
+# --- Route for serving images ---
 @app.route('/view_image/<session_id>/<pdf_base>/<filename>')
 def view_image(session_id, pdf_base, filename):
     """Serves an extracted image file for inline display."""
@@ -414,17 +497,25 @@ def download_file(session_id, filename):
 
 @app.route('/job/<job_id>')
 def job_status(job_id):
+    # Render the basic page; SSE will provide dynamic updates.
+    # We can pass the initial status if available, but JS will handle updates.
     with jobs_lock:
         job = jobs.get(job_id)
-        if not job:
-            return "Invalid job ID", 404
-        status = job['status']
-        download_url = job.get('download_url')
-        error = job.get('error')
-    return render_template('job.html', job_id=job_id, status=status, download_url=download_url, error=error)
+        initial_status = job['status'] if job else 'loading' # Or 'unknown'
+
+    # Check if job exists, otherwise show error page immediately
+    if not job:
+         return render_template('job.html', job_id=job_id, status='error', error='Invalid or expired job ID')
+
+    return render_template('job.html', job_id=job_id, status=initial_status) # Pass initial status
 
 if __name__ == '__main__':
-    host = os.getenv('FLASK_HOST', '127.0.0.1')
+    # Set SERVER_NAME for external URL generation if running locally without Gunicorn/proxy
+    # For production, this should ideally be handled by the proxy (e.g., Nginx)
+    # or set via environment variables.
+    # SERVER_NAME is now configured above based on environment variable
+
+    host = os.getenv('FLASK_HOST', '127.0.0.1') # Gunicorn/Docker typically use 0.0.0.0
     port = int(os.getenv('FLASK_PORT', 5009))
     debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() in ['true', '1', 't']
     app.run(host=host, port=port, debug=debug_mode)
