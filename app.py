@@ -377,7 +377,17 @@ def background_process_job(job_id, temp_pdf_path, api_key_to_use, session_id):
                 except Exception as e:
                     print(f"Warning: could not clean up split folder {split_folder}: {e}")
 
+            import re
+
             merged_markdown = "\n\n---\n\n".join(all_markdowns)
+
+            # Replace all image alt texts with "Image X."
+            def replace_alt(match, counter=iter(range(1, 10000))):
+                idx = next(counter)
+                return f'![Image {idx}.]({match.group(1)})'
+
+            merged_markdown = re.sub(r'!\[.*?\]\((.*?)\)', replace_alt, merged_markdown)
+
             merged_md_path = final_output_dir / f"{pdf_base_sanitized}.md"
             with open(merged_md_path, "w", encoding="utf-8") as f_md:
                 f_md.write(merged_markdown)
