@@ -19,6 +19,8 @@ from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
 from PyPDF2 import PdfReader, PdfWriter
+from PIL import Image
+import io
 
 load_dotenv() # Load environment variables from .env file
 
@@ -178,6 +180,7 @@ def process_pdf(pdf_path: Path, api_key: str, session_output_dir: Path) -> tuple
         image_path_updates = {} # Store mapping from original ID to relative path for markdown update
 
         print(f"  Extracting images and generating Markdown...")
+        image_counter = 1
         for page_index, page in enumerate(ocr_response.pages):
             current_page_markdown = page.markdown # Start with original markdown
 
@@ -188,47 +191,59 @@ def process_pdf(pdf_path: Path, api_key: str, session_output_dir: Path) -> tuple
 
                 base64_str = image_obj.image_base64
 
-                # Sanitize the original image ID provided by Mistral to use as filename
-                # Keep the original extension if present, default to .png otherwise
-                original_image_id = image_obj.id
-                sanitized_image_filename = secure_filename(original_image_id)
-                if not Path(sanitized_image_filename).suffix:
-                     sanitized_image_filename += ".png" # Add default extension if missing
-
-                # Path to save the image (directly in the pdf_output_dir)
-                image_output_path = pdf_output_dir / sanitized_image_filename
-
                 # Decode Base64
                 if base64_str.startswith("data:"):
-                    try: base64_str = base64_str.split(",", 1)[1]
+                    try:
+                        base64_str = base64_str.split(",", 1)[1]
                     except IndexError:
-                         print(f"  Warning: Malformed data URI for image {original_image_id} on page {page_index+1}.")
-                         continue
+                        print(f"  Warning: Malformed data URI for image on page {page_index+1}.")
+                        continue
                 try:
                     image_bytes = base64.b64decode(base64_str)
                 except Exception as decode_err:
-                    print(f"  Warning: Base64 decode error for image {original_image_id} on page {page_index+1}: {decode_err}")
+                    print(f"  Warning: Base64 decode error on page {page_index+1}: {decode_err}")
                     continue
 
-                # Save the image
+                # Convert to webp using Pillow
+                try:
+                    image = Image.open(io.BytesIO(image_bytes))
+                    webp_bytes_io = io.BytesIO()
+                    image.save(webp_bytes_io, format="WEBP")
+                    webp_bytes = webp_bytes_io.getvalue()
+                except Exception as pil_err:
+                    print(f"  Warning: Failed to convert image to webp on page {page_index+1}: {pil_err}")
+                    continue
+
+                # New filename: img-{counter}.webp
+                new_img_name = f"img-{image_counter}.webp"
+                image_output_path = pdf_output_dir / new_img_name
+
+                # Save webp image
                 try:
                     with open(image_output_path, "wb") as img_file:
-                        img_file.write(image_bytes)
-                    if sanitized_image_filename not in extracted_image_filenames: # Avoid duplicates if ID appears on multiple pages
-                        extracted_image_filenames.append(sanitized_image_filename)
-                    # Store mapping for potential markdown update (use original ID as key)
-                    image_path_updates[original_image_id] = sanitized_image_filename
-                    print(f"    Saved image: {sanitized_image_filename}")
+                        img_file.write(webp_bytes)
+                    extracted_image_filenames.append(new_img_name)
+                    image_path_updates[image_obj.id] = new_img_name
+                    print(f"    Saved image: {new_img_name}")
                 except IOError as io_err:
-                     print(f"  Warning: Could not write image file {image_output_path}: {io_err}")
-                     continue
+                    print(f"  Warning: Could not write image file {image_output_path}: {io_err}")
+                    continue
+
+                image_counter += 1
 
             # Update markdown image references for the current page
-            # Replace occurrences of ![alt](original_image_id) with ![alt](sanitized_image_filename)
+            # Replace occurrences of ![alt](original_id) with ![Image X](new_filename)
             for original_id, new_filename in image_path_updates.items():
-                 # Basic replacement - might need refinement for complex markdown structures
-                 # This assumes Mistral uses the image ID directly in the markdown link like `![...](image_id)`
-                 current_page_markdown = current_page_markdown.replace(f"({original_id})", f"({new_filename})")
+                # Replace alt text and filename
+                # Pattern: ![any alt text](original_id) -> ![Image X](new_filename)
+                current_page_markdown = current_page_markdown.replace(
+                    f"]({original_id})", f"](/{new_filename})"
+                )
+                # Replace alt text before the bracket
+                # This is a simple approach assuming standard markdown syntax
+                current_page_markdown = current_page_markdown.replace(
+                    f"![](/" + new_filename + ")", f"![Image {image_counter - 1}]({new_filename})"
+                )
 
             updated_markdown_pages.append(current_page_markdown)
             image_path_updates = {} # Reset for next page
