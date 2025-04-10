@@ -22,7 +22,13 @@ app = Flask(__name__)
 # --- Configuration ---
 UPLOAD_FOLDER = Path(os.getenv('UPLOAD_FOLDER', 'uploads'))
 OUTPUT_FOLDER = Path(os.getenv('OUTPUT_FOLDER', 'output'))
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
+try:
+    max_mb = int(os.getenv('MAX_UPLOAD_MB', '100')) # Default to 100MB
+    if max_mb <= 0: max_mb = 100 # Ensure positive value
+except ValueError:
+    max_mb = 100 # Fallback if env var is not a valid integer
+app.config['MAX_CONTENT_LENGTH'] = max_mb * 1024 * 1024
+print(f"Maximum upload size set to: {max_mb} MB")
 ALLOWED_EXTENSIONS = {'pdf'}
 
 # Directories are now created in the Dockerfile, no need to create them here.

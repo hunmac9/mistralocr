@@ -13,6 +13,7 @@ services:
       # FLASK_DEBUG: 'False' # Set to 'True' for development debugging
       # UPLOAD_FOLDER: /app/uploads # Default is 'uploads' relative to WORKDIR /app
       # OUTPUT_FOLDER: /app/output # Default is 'output' relative to WORKDIR /app
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-100} # Max PDF upload size in MB (default 100)
     # Optional volumes for persisting data outside the container (uncomment if needed)
     # volumes:
       # - ./uploads:/app/uploads # Persist uploaded files (app currently cleans this up)
