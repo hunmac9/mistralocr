@@ -36,12 +36,7 @@ EXPOSE 5009
 # Create a non-root user and group
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 
-# Switch to the non-root user
-USER appuser
-
-# Define the command to run the application using Gunicorn
-# Bind to 0.0.0.0 to allow external connections to the container
-# Create necessary directories and set ownership before switching user
+# Create necessary directories and set ownership *before* switching user
 RUN mkdir uploads output && chown appuser:appgroup uploads output
 
 # Switch to the non-root user
