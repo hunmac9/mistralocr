@@ -29,8 +29,8 @@ A simple web application using Flask and the Mistral AI API to convert PDF files
 
 1.  **Clone the Repository:**
     ```bash
-    git clone <your-repository-url>
-    cd <repository-directory>
+    git clone [<your-repository-url>](https://github.com/hunmac9/mistralocr.git)
+    cd mistralocr
     ```
 
 2.  **Create `.env` File:**
