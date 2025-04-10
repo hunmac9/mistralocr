@@ -39,7 +39,7 @@ A simple web application using Flask and the Mistral AI API to convert PDF files
     # .env
     MISTRAL_API_KEY=your_actual_api_key_here
     ```
-    *(This file is git-ignored, keeping your key safe!)*
+    *(This will be used by default, don't set your spend limits too high if the app is publicly accessible!)*
 
 3.  **Launch with Docker Compose:**
     ```bash
