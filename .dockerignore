@@ -1,0 +1,35 @@
+# Git files
+.git
+.gitignore
+
+# Python cache and virtual environment
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv
+venv/
+env/
+
+# IDE files
+.vscode/
+.idea/
+
+# OS specific files
+.DS_Store
+._*
+
+# Local upload/output folders (should use volumes instead)
+uploads/
+output/
+ocr_output/
+input/
+
+# Notebooks
+*.ipynb
+
+# Nixpacks config
+nixpacks.toml
+
+# Documentation images (if not needed in container)
+# doc/

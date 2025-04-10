@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PDF to Markdown OCR</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <!-- Updated FontAwesome CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" />
+  
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
+      svg: { fontCache: 'global' }
+    };
+  </script>
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script id="MathJax-script" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>PDF to Markdown OCR</h1>
+      <p class="tagline">Convert your PDFs effortlessly using Mistral AI OCR</p>
+    </header>
+    
+    <main>
+      <section class="form-section">
+        <form id="ocr-form">
+          <div class="form-group">
+            <label for="api-key">Mistral API Key</label>
+            <div class="password-toggle-group">
+              <input type="password" id="api-key" name="api_key" placeholder="Enter your API key">
+              <input type="checkbox" id="api-key-toggle">
+              <label for="api-key-toggle" class="toggle-label">Show</label>
+            </div>
+            <small>Get one at: <a href="https://console.mistral.ai/api-keys" target="_blank">Mistral API</a></small>
+            <small>Your key is securely transmitted and not stored long-term.</small>
+          </div>
+          
+          <div class="form-group">
+            <label for="pdf-files">Select PDF Files</label>
+            <input type="file" id="pdf-files" name="pdf_files" accept=".pdf" multiple required>
+            <small>Select one or more PDFs.</small>
+            <small>Note: API rate limits may apply.</small>
+          </div>
+          <button type="submit" id="submit-btn">Convert PDFs</button>
+        </form>
+      </section>
+      
+      <section id="status-area" class="status-section">
+        <h2>Processing Status</h2>
+        <pre id="status-log">Ready. Select files and click "Convert PDFs".</pre>
+        <div class="loader" id="loader" style="display: none;"></div>
+      </section>
+      
+      <section id="results-area" class="results-section" style="display: none;">
+        <h2>Downloads</h2>
+        <p>Download the ZIP archive(s) containing your Markdown files and images.</p>
+        <ul id="download-links"></ul>
+      </section>
+      
+      <section id="preview-area" class="preview-section" style="display: none;">
+        <h2>Previews</h2>
+        <div id="preview-content"></div>
+      </section>
+      
+      <section id="error-area" class="error-section" style="display: none;">
+        <h2>Error</h2>
+        <pre id="error-message" class="error"></pre>
+      </section>
+    </main>
+    
+    <footer>
+      <p>Developed by Diego Marzá</p>
+      <div class="social-icons">
+        <a href="https://www.linkedin.com/in/diegomarza/" target="_blank" title="LinkedIn"><i class="fab fa-linkedin"></i></a>
+        <a href="https://github.com/diegomarzaa/pdf-ocr-obsidian/" target="_blank" title="GitHub"><i class="fab fa-github"></i></a>
+      </div>
+    </footer>
+  </div>
+  
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
