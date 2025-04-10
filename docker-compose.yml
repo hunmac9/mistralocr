@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "5009:5009"
+    environment:
+      # Load the API key from a .env file in the same directory as this docker-compose.yml
+      # Create a file named .env and add the line: MISTRAL_API_KEY=your_actual_api_key
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY}
+      # Set Flask/Gunicorn specific env vars if needed (optional, defaults in app.py/Dockerfile CMD are used)
+      # FLASK_HOST: 0.0.0.0 # Gunicorn binds to this via CMD
+      # FLASK_PORT: 5009 # Gunicorn binds to this via CMD
+      # FLASK_DEBUG: 'False' # Set to 'True' for development debugging
+      # UPLOAD_FOLDER: /app/uploads # Default is 'uploads' relative to WORKDIR /app
+      # OUTPUT_FOLDER: /app/output # Default is 'output' relative to WORKDIR /app
+    # Optional volumes for persisting data outside the container (uncomment if needed)
+    # volumes:
+      # - ./uploads:/app/uploads # Persist uploaded files (app currently cleans this up)
+      # - ./output:/app/output   # Persist generated output files
