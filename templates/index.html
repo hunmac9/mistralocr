@@ -29,8 +29,7 @@
             <input type="file" id="pdf-files" name="pdf_files" accept=".pdf" multiple required>
             <small>Select one or more PDF files to convert.</small>
             <small>Maximum upload size: {{ max_upload_mb }} MB.</small>
-            <small>Note: The Mistral API only accepts PDFs up to {{ mistral_max_mb }} MB. Larger files will be compressed automatically before processing.</small>
-            <small>Processing time depends on file size and API limits.</small>
+            <small>Note: The Mistral API only accepts PDFs up to {{ mistral_max_mb }} MB. Larger files will be compressed automatically before processing. Processing time depends on file size but should not take longer than a few minutes.</small>
           </div>
           <button type="submit" id="submit-btn">Convert to Markdown</button>
         </form>
