@@ -15,7 +15,7 @@ A simple web application using Flask and the Mistral AI API to convert PDF files
 -   **📄 Standard Markdown:** Outputs clean Markdown with relative image links.
 -   **🖼️ Image Handling:** Saves extracted images alongside the Markdown file using original filenames.
 -   **📦 Packaged Output:** Delivers results (Markdown, images, raw JSON response) as a downloadable ZIP archive.
--   **⚙️ Configurable Upload Limit:** Set maximum PDF upload size via environment variable (default 100MB).
+-   **⚙️ Configurable Upload Limit:** Set maximum PDF upload size via environment variable (default 100MB); automatic compression for PDFs over Mistral's 50mb limit.
 -   **🐳 Dockerized:** Ready to run with Docker Compose.
 
 ## 🚀 Getting Started
