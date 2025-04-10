@@ -83,17 +83,21 @@ document.addEventListener('DOMContentLoaded', () => {
         resultsArea.style.display = 'block';
     }
 
-    function pollStatus(jobId) {
-        const pollIntervalMs = 3000;
-        const maxPollTimeMs = 10 * 60 * 1000; // 10 minutes
-        const startTime = Date.now();
+function pollStatus(jobId) {
+    const pollIntervalMs = 3000;
+    const maxPollTimeMs = 10 * 60 * 1000; // 10 minutes
+    const startTime = Date.now();
+    let lastStatus = null;
 
-        async function poll() {
-            try {
-                const resp = await fetch(`/status/${jobId}`);
-                if (!resp.ok) throw new Error(`Status check failed: ${resp.status}`);
-                const data = await resp.json();
+    async function poll() {
+        try {
+            const resp = await fetch(`/status/${jobId}`);
+            if (!resp.ok) throw new Error(`Status check failed: ${resp.status}`);
+            const data = await resp.json();
+            if (data.status !== lastStatus) {
                 logStatus(`Job ${jobId} status: ${data.status}`);
+                lastStatus = data.status;
+            }
 
                 if (data.status === 'done' && data.download_url) {
                     logStatus('Processing complete. Download ready.');

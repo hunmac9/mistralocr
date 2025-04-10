@@ -9,7 +9,7 @@ import shutil
 import zipfile
 from pathlib import Path
 from uuid import uuid4
-from flask import Flask, request, render_template, jsonify, send_from_directory, url_for
+from flask import Flask, request, render_template, jsonify, send_from_directory, url_for, redirect
 import threading
 import time
 from mistralai import Mistral, DocumentURLChunk
@@ -301,7 +301,8 @@ def background_process_job(job_id, temp_pdf_path, api_key_to_use, session_id):
         except Exception:
             pass
 
-        download_url = url_for('download_file', session_id=session_id, filename=zip_filename, _external=True)
+        with app.app_context():
+            download_url = url_for('download_file', session_id=session_id, filename=zip_filename, _external=True)
 
         with jobs_lock:
             jobs[job_id]['status'] = 'done'
@@ -357,7 +358,7 @@ def handle_process():
             # Start background thread, pass path and session_id
             t = threading.Thread(target=background_process_job, args=(job_id, temp_pdf_path, api_key_to_use, session_id))
             t.start()
-            return jsonify({"job_id": job_id, "status": "queued"}), 202
+            return redirect(url_for('job_status', job_id=job_id))
 
     return jsonify({"error": "No valid PDF files found."}), 400
 
@@ -410,6 +411,17 @@ def download_file(session_id, filename):
 
     print(f"Serving ZIP for download: {file_path}")
     return send_from_directory(directory, safe_filename, as_attachment=True)
+
+@app.route('/job/<job_id>')
+def job_status(job_id):
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if not job:
+            return "Invalid job ID", 404
+        status = job['status']
+        download_url = job.get('download_url')
+        error = job.get('error')
+    return render_template('job.html', job_id=job_id, status=status, download_url=download_url, error=error)
 
 if __name__ == '__main__':
     host = os.getenv('FLASK_HOST', '127.0.0.1')

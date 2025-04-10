@@ -18,29 +18,17 @@
   <main class="app-main fade-in">
 
     <section class="upload-section glassmorphism">
-      <h2><i class="fas fa-upload"></i> Drag & Drop PDFs</h2>
-      <div id="drop-zone" class="form-group">
-        <p>Drop your PDF files here or click to select</p>
-        <input type="file" id="pdf-files" name="pdf_files" accept=".pdf" multiple style="display:none;" />
-      </div>
+      <h2><i class="fas fa-upload"></i> Upload PDFs</h2>
+      <form action="/process" method="post" enctype="multipart/form-data">
+        <input type="file" name="pdf_files" accept=".pdf" multiple required>
+        <button type="submit">Upload and Convert</button>
+      </form>
       <small>Multiple files allowed. Max size: {{ max_upload_mb }} MB (auto-compresses if over {{ mistral_max_mb }} MB).</small>
     </section>
 
-    <section id="status-area" class="status-section glassmorphism fade-in">
-      <h2><i class="fas fa-info-circle"></i> Status</h2>
-      <pre id="status-log">Ready. Drag and drop files to start conversion.</pre>
-      <div class="loader" id="loader" style="display: none;"></div>
-    </section>
-
-    <section id="results-area" class="results-section glassmorphism fade-in" style="display: none;">
-      <h2><i class="fas fa-download"></i> Downloads</h2>
-      <p>Your converted files will be available here:</p>
-      <ul id="download-links"></ul>
-    </section>
-
-    <section id="error-area" class="error-section glassmorphism fade-in" style="display: none;">
-      <h2><i class="fas fa-exclamation-triangle"></i> Errors</h2>
-      <pre id="error-message" class="error"></pre>
+    <section class="status-section glassmorphism fade-in">
+      <h2><i class="fas fa-info-circle"></i> Instructions</h2>
+      <p>Select your PDF files and click "Upload and Convert". You will be redirected to a status page that updates automatically.</p>
     </section>
 
   </main>
@@ -50,7 +38,5 @@
   </footer>
 
 </div>
-
-<script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>

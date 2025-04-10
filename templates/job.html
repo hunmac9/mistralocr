@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Job Status - PDF to Markdown OCR</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" />
+{% if status in ['queued', 'processing'] %}
+<meta http-equiv="refresh" content="3">
+{% endif %}
+</head>
+<body>
+<div class="app-container glassmorphism">
+
+  <header class="app-header fade-in">
+    <h1><i class="fas fa-file-pdf"></i> PDF to Markdown</h1>
+  </header>
+
+  <main class="app-main fade-in">
+
+    <section class="status-section glassmorphism fade-in">
+      <h2><i class="fas fa-info-circle"></i> Job Status</h2>
+      <p>Job ID: {{ job_id }}</p>
+      <p>Status: {{ status }}</p>
+
+      {% if status == 'done' %}
+        <p><a href="{{ download_url }}" class="button"><i class="fas fa-download"></i> Download ZIP</a></p>
+      {% elif status == 'error' %}
+        <p class="error">Error: {{ error }}</p>
+      {% else %}
+        <p>Please wait... This page will refresh automatically.</p>
+      {% endif %}
+
+      <p><a href="{{ url_for('index') }}">Start another conversion</a></p>
+    </section>
+
+  </main>
+
+  <footer class="app-footer fade-in">
+    <p>&copy; 2025. Licensed under MPL 2.0.</p>
+  </footer>
+
+</div>
+</body>
+</html>
