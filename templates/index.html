@@ -1,87 +1,79 @@
-<!-- This Source Code Form is subject to the terms of the Mozilla Public
-   - License, v. 2.0. If a copy of the MPL was not distributed with this
-   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PDF to Markdown OCR</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <!-- FontAwesome for Icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" />
-  <!-- Marked.js for Markdown Preview -->
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDF to Markdown OCR</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" />
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <h1>PDF to Markdown</h1>
-      <p class="tagline">PDF to Markdown conversion using Mistral's AI OCR model API.</p>
-    </header>
+<div class="app-container glassmorphism">
 
-    <main>
-      <section class="form-section">
-        <form id="ocr-form">
-          <div class="form-group">
-            <label for="pdf-files">Select PDF Files</label>
-            <input type="file" id="pdf-files" name="pdf_files" accept=".pdf" multiple required>
-            <small>Select one or more PDF files to convert.</small>
-            <small>Maximum upload size: {{ max_upload_mb }} MB.</small>
-            <small>Note: The Mistral API currently only accepts PDFs up to {{ mistral_max_mb }} MB. Larger files will be compressed automatically before processing. Processing time depends on file size but should not take longer than a few minutes.</small>
-          </div>
-          <button type="submit" id="submit-btn">Convert to Markdown</button>
-        </form>
-      </section>
+  <header class="app-header fade-in">
+    <h1><i class="fas fa-file-pdf"></i> PDF to Markdown</h1>
+    <p class="tagline">Convert PDFs to Markdown with Mistral AI OCR</p>
+  </header>
 
-      <section id="status-area" class="status-section">
-        <h2>Status</h2>
-        <pre id="status-log">Ready. Select files and click "Convert to Markdown".</pre>
-        <div class="loader" id="loader" style="display: none;"></div>
-      </section>
+  <main class="app-main fade-in">
 
-      <section id="results-area" class="results-section" style="display: none;">
-        <h2>Downloads</h2>
-        <p>Download ZIP archives containing your Markdown files and extracted images.</p>
-        <ul id="download-links"></ul>
-      </section>
-
-      <section id="preview-area" class="preview-section" style="display: none;">
-        <h2>Markdown Previews</h2>
-        <div id="preview-content"></div>
-      </section>
-
-      <section id="error-area" class="error-section" style="display: none;">
-        <h2>Errors</h2>
-        <pre id="error-message" class="error"></pre>
-      </section>
-
-      <!-- API Key Section -->
-      <section id="api-key-section" class="api-key-section">
-        <h2>Mistral API Key (Optional)</h2>
-        <p>Provide your API key if the .env key is not configured or rate-limited.</p>
+    <section class="upload-section glassmorphism">
+      <form id="ocr-form">
+        <h2><i class="fas fa-upload"></i> Upload PDFs</h2>
         <div class="form-group">
-          <label for="api-key">API Key</label>
-          <div class="password-toggle-group">
-            <input type="password" id="api-key" name="api_key" placeholder="Enter fallback API key">
-            <input type="checkbox" id="api-key-toggle">
-            <label for="api-key-toggle" class="toggle-label"></label> <!-- Text set via CSS -->
-          </div>
-          <small>Get an API key at: <a href="https://console.mistral.ai/api-keys" target="_blank" rel="noopener noreferrer">console.mistral.ai</a></small>
-          <small>Your key is sent securely with each request and not stored.</small>
+          <label for="pdf-files">Select PDF Files</label>
+          <input type="file" id="pdf-files" name="pdf_files" accept=".pdf" multiple required />
+          <small>Multiple files allowed. Max size: {{ max_upload_mb }} MB (auto-compresses if over {{ mistral_max_mb }} MB).</small>
         </div>
-      </section>
-      <!-- End API Key Section -->
+        <button type="submit" id="submit-btn"><i class="fas fa-magic"></i> Convert to Markdown</button>
+      </form>
+    </section>
 
-    </main>
+    <section id="status-area" class="status-section glassmorphism fade-in">
+      <h2><i class="fas fa-info-circle"></i> Status</h2>
+      <pre id="status-log">Ready. Select files and click "Convert to Markdown".</pre>
+      <div class="loader" id="loader" style="display: none;"></div>
+    </section>
 
-    <footer>
-      <p>&copy; 2025. Licensed under MPL 2.0.</p>
-      <!-- Link to license file could be added here if desired -->
-    </footer>
-  </div>
+    <section id="results-area" class="results-section glassmorphism fade-in" style="display: none;">
+      <h2><i class="fas fa-download"></i> Downloads</h2>
+      <p>Download your Markdown files and extracted images:</p>
+      <ul id="download-links"></ul>
+    </section>
 
-  <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <section id="preview-area" class="preview-section glassmorphism fade-in" style="display: none;">
+      <h2><i class="fas fa-eye"></i> Previews</h2>
+      <div id="preview-content"></div>
+    </section>
+
+    <section id="error-area" class="error-section glassmorphism fade-in" style="display: none;">
+      <h2><i class="fas fa-exclamation-triangle"></i> Errors</h2>
+      <pre id="error-message" class="error"></pre>
+    </section>
+
+    <section id="api-key-section" class="api-key-section glassmorphism fade-in">
+      <h2><i class="fas fa-key"></i> Mistral API Key (Optional)</h2>
+      <p>Provide your API key if needed.</p>
+      <div class="form-group">
+        <label for="api-key">API Key</label>
+        <div class="password-toggle-group">
+          <input type="password" id="api-key" name="api_key" placeholder="Enter fallback API key" />
+          <input type="checkbox" id="api-key-toggle" />
+          <label for="api-key-toggle" class="toggle-label"></label>
+        </div>
+        <small>Get an API key at <a href="https://console.mistral.ai/api-keys" target="_blank">console.mistral.ai</a></small>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="app-footer fade-in">
+    <p>&copy; 2025. Licensed under MPL 2.0.</p>
+  </footer>
+
+</div>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
