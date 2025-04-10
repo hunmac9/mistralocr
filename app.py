@@ -273,25 +273,19 @@ jobs = {}
 jobs_lock = threading.Lock()
 
 # --- Background worker function ---
-def background_process_job(job_id, file_storage, api_key_to_use):
+def background_process_job(job_id, temp_pdf_path, api_key_to_use, session_id):
     with jobs_lock:
         jobs[job_id]['status'] = 'processing'
     try:
-        session_id = str(uuid4())
         session_upload_dir = UPLOAD_FOLDER / session_id
         session_output_dir = OUTPUT_FOLDER / session_id
-        session_upload_dir.mkdir(parents=True, exist_ok=True)
         session_output_dir.mkdir(parents=True, exist_ok=True)
 
-        original_filename = file_storage.filename
-        filename_sanitized = secure_filename(original_filename)
-        pdf_base_sanitized = secure_filename(Path(original_filename).stem)
-        temp_pdf_path = session_upload_dir / filename_sanitized
+        original_filename = temp_pdf_path.name
+        pdf_base_sanitized = secure_filename(temp_pdf_path.stem)
         zip_filename = f"{pdf_base_sanitized}_output.zip"
         zip_output_path = session_output_dir / zip_filename
         individual_output_dir = session_output_dir / pdf_base_sanitized
-
-        file_storage.save(temp_pdf_path)
 
         # Process PDF
         processed_pdf_base, markdown_content, image_filenames, md_path, img_dir = process_pdf(
