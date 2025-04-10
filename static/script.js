@@ -129,12 +129,13 @@ document.addEventListener('DOMContentLoaded', () => {
         event.preventDefault();
         resetUI();
 
-        const apiKey = apiKeyInput.value.trim();
+        const apiKey = apiKeyInput.value.trim(); // Still read the key, might be empty
         const files = fileInput.files;
 
-        if (!apiKey || files.length === 0) {
-             logStatus('Error: API Key and at least one PDF file are required.');
-             errorMessage.textContent = 'API Key and at least one PDF file are required.';
+        // Only require files on the client-side. Server handles API key logic.
+        if (files.length === 0) {
+             logStatus('Error: At least one PDF file is required.');
+             errorMessage.textContent = 'At least one PDF file is required.';
              errorArea.style.display = 'block';
              return;
         }

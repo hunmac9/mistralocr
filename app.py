@@ -196,14 +196,19 @@ def handle_process():
         return jsonify({"error": "No PDF files part in the request"}), 400
 
     files = request.files.getlist('pdf_files')
-    api_key = request.form.get('api_key')
+    env_api_key = os.getenv("MISTRAL_API_KEY")
+    form_api_key = request.form.get('api_key')
 
-    if not api_key:
-        # Check if we have a fallback API key from .env
-        api_key = os.getenv("MISTRAL_API_KEY") # Use environment variable if form field is empty
-        if not api_key:
-             # Only return error if neither form nor env var has the key
-            return jsonify({"error": "Mistral API Key is required (provide in form or set MISTRAL_API_KEY env var)"}), 400
+    api_key_to_use = None
+    if env_api_key:
+        api_key_to_use = env_api_key
+        print("Using API key from environment variable.")
+    elif form_api_key:
+        api_key_to_use = form_api_key
+        print("Using API key from form input as fallback.")
+    else:
+        # Neither environment variable nor form input has the key
+        return jsonify({"error": "Mistral API Key is required. Set the MISTRAL_API_KEY environment variable or provide it in the form."}), 400
 
     if not files or all(f.filename == '' for f in files):
          return jsonify({"error": "No selected PDF files"}), 400
@@ -243,9 +248,9 @@ def handle_process():
             print(f"Saving uploaded file temporarily to: {temp_pdf_path}")
             file.save(temp_pdf_path)
 
-            # Process PDF - Capture new return values
+            # Process PDF - Capture new return values, passing the determined key
             processed_pdf_base, markdown_content, image_filenames, md_path, img_dir = process_pdf(
-                temp_pdf_path, api_key, session_output_dir
+                temp_pdf_path, api_key_to_use, session_output_dir
             )
 
             # Create ZIP (using the individual output dir)

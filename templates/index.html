@@ -23,17 +23,6 @@
       <section class="form-section">
         <form id="ocr-form">
           <div class="form-group">
-            <label for="api-key">Mistral API Key</label>
-            <div class="password-toggle-group">
-              <input type="password" id="api-key" name="api_key" placeholder="Enter your API key">
-              <input type="checkbox" id="api-key-toggle">
-              <label for="api-key-toggle" class="toggle-label">Show</label>
-            </div>
-            <small>Get one at: <a href="https://console.mistral.ai/api-keys" target="_blank">Mistral API</a></small>
-            <small>Your key is securely transmitted and not stored long-term.</small>
-          </div>
-          
-          <div class="form-group">
             <label for="pdf-files">Select PDF Files</label>
             <input type="file" id="pdf-files" name="pdf_files" accept=".pdf" multiple required>
             <small>Select one or more PDFs.</small>
@@ -64,8 +53,26 @@
         <h2>Error</h2>
         <pre id="error-message" class="error"></pre>
       </section>
+
+      <!-- Moved API Key Section -->
+      <section id="api-key-section" class="api-key-section">
+        <h2>Mistral API Key (Optional Fallback)</h2>
+        <p>Provide your API key here only if the application fails to use the key configured on the server.</p>
+        <div class="form-group">
+          <label for="api-key">Mistral API Key</label>
+          <div class="password-toggle-group">
+            <input type="password" id="api-key" name="api_key" placeholder="Enter fallback API key">
+            <input type="checkbox" id="api-key-toggle">
+            <label for="api-key-toggle" class="toggle-label"></label> <!-- Text set via CSS -->
+          </div>
+          <small>Get one at: <a href="https://console.mistral.ai/api-keys" target="_blank">Mistral API</a></small>
+          <small>Your key is securely transmitted and not stored long-term.</small>
+        </div>
+      </section>
+      <!-- End Moved API Key Section -->
+
     </main>
-    
+
     <footer>
       <p>Developed by Diego Marzá</p>
       <div class="social-icons">
