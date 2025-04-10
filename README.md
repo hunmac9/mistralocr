@@ -6,8 +6,9 @@
 
 A simple web application using Flask and the Mistral AI API to convert PDF files into standard Markdown documents, extracting text and images. Easily run using Docker Compose.
 
-*(Inspired by an Obsidian version at [diegomarzaa/pdf-ocr-obsidian](https://github.com/diegomarzaa/pdf-ocr-obsidian))*
-*(This version is specifically adapted to import to a moddified version of Outline, but should work with most markdown importers)*
+*Inspired by an Obsidian version at [diegomarzaa/pdf-ocr-obsidian](https://github.com/diegomarzaa/pdf-ocr-obsidian)*
+
+*This version is specifically adapted to import to a moddified version of Outline, but should work with most markdown importers*
 
 ## ✨ Features
 
