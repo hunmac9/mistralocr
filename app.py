@@ -149,7 +149,7 @@ def process_pdf(pdf_path: Path, api_key: str, session_output_dir: Path) -> tuple
         uploaded_file_id = mistral_file.id # Store ID for cleanup
 
         print(f"  File uploaded (ID: {uploaded_file_id}). Getting signed URL...")
-        signed_url = client.files.get_signed_url(file_id=uploaded_file_id, expiry=60) # Keep expiry short
+        signed_url = client.files.get_signed_url(file_id=uploaded_file_id, expiry=300) # Keep expiry short
 
         print(f"  Calling Mistral OCR API for file ID {uploaded_file_id} (this may take a while)...")
         start_time = time.time()
