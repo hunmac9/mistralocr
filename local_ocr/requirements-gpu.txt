@@ -7,7 +7,7 @@ gunicorn==23.0.0
 torch==2.5.1+cu121
 torchvision==0.20.1+cu121
 
-# Transformers for PaddleOCR-VL model (4.55.0+ required)
+# Transformers for model loading
 transformers>=4.55.0
 
 # Image processing
@@ -26,7 +26,12 @@ safetensors
 sentencepiece
 protobuf>=3.20.0
 scipy
-tiktoken
 
 # Numpy
 numpy>=1.26.0
+
+# Chandra OCR model (GPU recommended - 9B params)
+chandra-ocr>=0.1.8
+
+# Surya OCR (CPU-friendly, ~300M params)
+surya-ocr>=0.8.0

@@ -185,6 +185,7 @@ def load_surya_model():
     global model, processor, current_model_type
     from surya.recognition import RecognitionPredictor
     from surya.detection import DetectionPredictor
+    from surya.foundation import FoundationPredictor
 
     # If another model is loaded, unload it first
     if current_model_type is not None:
@@ -195,12 +196,14 @@ def load_surya_model():
         start_time = time.time()
 
         try:
-            # Surya uses separate detection and recognition predictors
+            # Surya requires FoundationPredictor for RecognitionPredictor
+            foundation_predictor = FoundationPredictor()
             det_predictor = DetectionPredictor()
-            rec_predictor = RecognitionPredictor()
+            rec_predictor = RecognitionPredictor(foundation_predictor)
 
-            # Store both predictors as a dict for easy access
+            # Store predictors for easy access
             model = {
+                "foundation": foundation_predictor,
                 "detection": det_predictor,
                 "recognition": rec_predictor
             }

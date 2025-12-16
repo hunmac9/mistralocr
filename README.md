@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-WebApp-green?logo=flask)](https://flask.palletsprojects.com/)
 
-A web application using Flask to convert PDF files into standard Markdown documents, extracting text and images. Supports both **local OCR** (using PaddleOCR-VL) and **cloud OCR** (using Mistral AI API).
+A web application using Flask to convert PDF files into standard Markdown documents, extracting text and images. Supports both **local OCR** (using Surya or Chandra) and **cloud OCR** (using Mistral AI API).
 
 *Inspired by an Obsidian version at [diegomarzaa/pdf-ocr-obsidian](https://github.com/diegomarzaa/pdf-ocr-obsidian)*
 
@@ -12,7 +12,7 @@ A web application using Flask to convert PDF files into standard Markdown docume
 
 ## Features
 
--   **Local OCR (Default):** Uses PaddleOCR-VL-0.9B for privacy-preserving, no-API-key-required OCR
+-   **Local OCR (Default):** Uses Surya OCR (CPU-friendly, ~300M params) or Chandra OCR (GPU, 9B params) for privacy-preserving, no-API-key-required OCR
 -   **Cloud OCR (Optional):** Leverages [Mistral OCR](https://mistral.ai/news/mistral-ocr) for accurate text/image extraction
 -   **Upload Interface:** Simple web UI for uploading PDFs with OCR engine selection
 -   **Standard Markdown:** Outputs clean Markdown with relative image links
@@ -65,7 +65,7 @@ A web application using Flask to convert PDF files into standard Markdown docume
     * `--build`: Rebuilds the images if needed
     * `-d`: Runs the containers in the background (detached mode)
 
-    **Note:** The first run will download the PaddleOCR-VL model (~2GB), which may take several minutes.
+    **Note:** The first run will download the OCR model (Surya ~1GB, Chandra ~18GB), which may take several minutes.
 
 4. **Access the Web App:**
 
@@ -97,7 +97,7 @@ All configuration is done via environment variables in the `.env` file:
 
 **Backend Modes:**
 - `auto`: Uses local OCR by default, falls back to Mistral if API key is available
-- `local`: Uses only local PaddleOCR-VL (no API key required)
+- `local`: Uses only local OCR (Surya or Chandra, no API key required)
 - `mistral`: Uses only Mistral OCR API (requires API key)
 
 ### Server Settings
@@ -113,7 +113,7 @@ All configuration is done via environment variables in the `.env` file:
 
 1. User uploads PDF(s) via the web UI and selects an OCR engine
 2. The Flask backend sends the PDF to the selected OCR backend:
-   - **Local:** PaddleOCR-VL processes the PDF locally in Docker
+   - **Local:** Surya or Chandra OCR processes the PDF locally in Docker
    - **Cloud:** PDF is uploaded to Mistral OCR API
 3. OCR engine returns markdown-formatted text and images
 4. The app saves the markdown and images in a folder
@@ -121,7 +121,11 @@ All configuration is done via environment variables in the `.env` file:
 
 ### Memory Management
 
-The local OCR model (PaddleOCR-VL-0.9B) uses approximately 4-6GB of RAM/VRAM when loaded. To minimize resource usage:
+The local OCR models use varying amounts of RAM/VRAM:
+- **Surya OCR:** ~2-4GB RAM (CPU-friendly)
+- **Chandra OCR:** ~18GB VRAM (GPU required)
+
+To minimize resource usage:
 
 - The model is **only loaded when needed** (lazy loading)
 - After processing, the model **automatically unloads** after the idle timeout (default: 5 minutes)
@@ -171,7 +175,7 @@ When using GPU mode:
 +-------------------+      +-------------------+
 |                   |      |                   |
 |   Main App        | ---> |   Local OCR       |
-|   (Flask)         |      |   (PaddleOCR-VL)  |
+|   (Flask)         |      |   (Surya/Chandra) |
 |   Port: 5009      |      |   Port: 8000      |
 |                   |      |                   |
 +-------------------+      +-------------------+
@@ -192,15 +196,16 @@ If you want to manage the local OCR container separately:
 
 ```bash
 # Build the local OCR image
-docker build -t mistralocr-paddleocr:latest ./local_ocr
+docker build -t mistralocr-local-ocr:latest ./local_ocr
 
 # Run the local OCR server
 docker run -d \
-  --name mistralocr-paddleocr \
+  --name mistralocr-local-ocr \
   -p 8000:8000 \
   -e IDLE_TIMEOUT=300 \
-  -v paddleocr-cache:/home/appuser/.cache \
-  mistralocr-paddleocr:latest
+  -e DEFAULT_MODEL=surya \
+  -v mistralocr-cache:/home/appuser/.cache \
+  mistralocr-local-ocr:latest
 
 # Test the health endpoint
 curl http://localhost:8000/health
