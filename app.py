@@ -103,10 +103,13 @@ LOCAL_OCR_CONTAINER_NAME = os.getenv('LOCAL_OCR_CONTAINER_NAME', 'mistralocr-pad
 # - "paddle": Use PaddleOCR-VL model
 # - "chandra": Use Chandra OCR model (datalab-to/chandra)
 LOCAL_OCR_MODEL = os.getenv('LOCAL_OCR_MODEL', 'paddle').lower()
+# LOCAL_OCR_USE_VLLM: Use vLLM backend for GPU deployment (recommended)
+LOCAL_OCR_USE_VLLM = os.getenv('LOCAL_OCR_USE_VLLM', 'false').lower() == 'true'
 
 print(f"OCR Backend: {OCR_BACKEND}")
 print(f"Local OCR URL: {LOCAL_OCR_URL}")
 print(f"Local OCR Model: {LOCAL_OCR_MODEL}")
+print(f"Local OCR Use vLLM: {LOCAL_OCR_USE_VLLM}")
 print(f"Local OCR Auto-Start: {LOCAL_OCR_AUTO_START}")
 print(f"Local OCR Idle Timeout: {LOCAL_OCR_IDLE_TIMEOUT}s")
 
@@ -553,6 +556,7 @@ def handle_process():
             mistral_api_key=api_key_to_use,
             local_server_url=LOCAL_OCR_URL,
             local_model=local_model,
+            use_vllm=LOCAL_OCR_USE_VLLM,
             container_name=LOCAL_OCR_CONTAINER_NAME,
             docker_image=LOCAL_OCR_DOCKER_IMAGE,
             idle_timeout=LOCAL_OCR_IDLE_TIMEOUT,
@@ -712,6 +716,7 @@ app.config['LOCAL_OCR_CONTAINER_NAME'] = LOCAL_OCR_CONTAINER_NAME
 app.config['LOCAL_OCR_DOCKER_IMAGE'] = LOCAL_OCR_DOCKER_IMAGE
 app.config['LOCAL_OCR_IDLE_TIMEOUT'] = LOCAL_OCR_IDLE_TIMEOUT
 app.config['LOCAL_OCR_AUTO_START'] = LOCAL_OCR_AUTO_START
+app.config['LOCAL_OCR_MODEL'] = LOCAL_OCR_MODEL
 app.config['ALLOWED_EXTENSIONS'] = ALLOWED_EXTENSIONS
 
 # Apply rate limiting to API endpoints
