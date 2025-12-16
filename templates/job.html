@@ -3,48 +3,50 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Converting - PDF to Markdown</title>
+<title>Processing - MistraLOCR</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body>
 
-<div class="container" x-data="jobStatus('{{ job_id }}', '{{ status }}', '{{ download_url or '' }}', '{{ error or '' }}')">
-  <h1 class="title">PDF <span class="accent">to</span> Markdown</h1>
+<div class="job-page" x-data="jobStatus('{{ job_id }}', '{{ status }}', '{{ download_url or '' }}', '{{ error or '' }}')">
+  <!-- Header -->
+  <header class="header">
+    <div class="logo">MISTRALOCR</div>
+  </header>
 
-  <div class="status-container">
-    <div class="status-badge" :class="status">
-      <span class="dot"></span>
-      <span x-text="statusLabel"></span>
-    </div>
+  <!-- Main -->
+  <main class="job-main">
+    <div class="job-content">
+      <div class="status-display">
+        <!-- Status Indicator -->
+        <div class="status-indicator">
+          <div class="grid"></div>
+          <div class="status-icon" :class="status" x-text="statusIcon"></div>
+        </div>
 
-    <div class="progress-ring indeterminate" x-show="isProcessing" x-transition>
-      <svg width="120" height="120" viewBox="0 0 120 120">
-        <circle class="bg" cx="60" cy="60" r="54"/>
-        <circle class="fg" cx="60" cy="60" r="54"/>
-      </svg>
-      <div class="progress-text" x-text="status === 'queued' ? 'Queued' : 'Processing'"></div>
-    </div>
+        <!-- Status Text -->
+        <div class="status-text" x-text="statusLabel"></div>
 
-    <div x-show="status === 'done'" x-transition>
-      <div class="result-box success">
-        <a :href="downloadUrl" class="download-btn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2"/>
-          </svg>
-          Download ZIP
-        </a>
+        <!-- Download Button (when done) -->
+        <div x-show="status === 'done'" x-transition class="result-box success">
+          <a :href="downloadUrl" class="download-btn">Download</a>
+        </div>
+
+        <!-- Error Message -->
+        <div x-show="status === 'error'" x-transition class="result-box error">
+          <p class="error-message" x-text="errorMsg"></p>
+        </div>
       </div>
-    </div>
 
-    <div x-show="status === 'error'" x-transition>
-      <div class="result-box error">
-        <p class="error-message" x-text="errorMsg"></p>
-      </div>
+      <a href="{{ url_for('index') }}" class="back-link">&larr; New conversion</a>
     </div>
+  </main>
 
-    <a href="{{ url_for('index') }}" class="back-link">&larr; Convert another</a>
-  </div>
+  <!-- Footer -->
+  <footer class="footer">
+    <span class="limit">Job {{ job_id[:8] }}</span>
+  </footer>
 </div>
 
 <script>
@@ -64,9 +66,19 @@ function jobStatus(jobId, initialStatus, initialDownloadUrl, initialError) {
         queued: 'Queued',
         processing: 'Processing',
         done: 'Complete',
-        error: 'Error'
+        error: 'Failed'
       };
       return labels[this.status] || this.status;
+    },
+
+    get statusIcon() {
+      const icons = {
+        queued: '...',
+        processing: '~',
+        done: '✓',
+        error: '!'
+      };
+      return icons[this.status] || '?';
     },
 
     init() {

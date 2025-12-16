@@ -3,90 +3,113 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>PDF to Markdown</title>
+<title>MistraLOCR</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body>
 
-<div class="container" x-data="uploader()">
-  <h1 class="title">PDF <span class="accent">to</span> Markdown</h1>
-
-  <form action="/process" method="post" enctype="multipart/form-data" @submit="submitting = true">
-    <div
-      class="drop-zone"
-      :class="{ 'drag-over': dragging }"
-      @click="$refs.fileInput.click()"
-      @dragenter.prevent="dragging = true"
-      @dragover.prevent="dragging = true"
-      @dragleave.prevent="dragging = false"
-      @drop.prevent="handleDrop($event)"
-    >
-      <div class="grid-overlay"></div>
-      <div class="drop-content">
-        <div class="drop-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M12 16V4m0 0L8 8m4-4l4 4"/>
-            <path d="M3 15v4a2 2 0 002 2h14a2 2 0 002-2v-4"/>
-          </svg>
-        </div>
-        <p class="drop-text" x-text="files.length ? files.length + ' file' + (files.length > 1 ? 's' : '') + ' selected' : 'Drop PDFs here'"></p>
-        <p class="drop-subtext" x-show="!files.length">or click to browse</p>
-      </div>
-      <input
-        type="file"
-        name="pdf_files"
-        x-ref="fileInput"
-        accept=".pdf"
-        multiple
-        required
-        @change="handleFiles($event.target.files)"
+<div class="app" x-data="uploader()">
+  <!-- Header -->
+  <header class="header">
+    <div class="logo">MISTRALOCR</div>
+    <div class="backend-toggle">
+      <button
+        type="button"
+        class="toggle-btn"
+        :class="{ active: backend === 'local' }"
+        @click="backend = 'local'"
+        {% if not local_ocr_available and not local_ocr_auto_start %}disabled{% endif %}
       >
+        <span class="toggle-label">Local</span>
+        <span class="toggle-status {% if local_ocr_available %}on{% elif local_ocr_auto_start %}idle{% else %}off{% endif %}"></span>
+      </button>
+      {% if has_mistral_key %}
+      <button
+        type="button"
+        class="toggle-btn"
+        :class="{ active: backend === 'mistral' }"
+        @click="backend = 'mistral'"
+      >
+        <span class="toggle-label">Mistral</span>
+        <span class="toggle-status on"></span>
+      </button>
+      {% endif %}
     </div>
+  </header>
 
-    <div class="file-list" x-show="files.length" x-transition>
-      <template x-for="(file, index) in files" :key="index">
-        <div class="file-item">
-          <span class="file-name" x-text="file.name"></span>
-          <button type="button" class="file-remove" @click="removeFile(index)">&times;</button>
+  <!-- Main Drop Zone -->
+  <main class="main">
+    <form action="/process" method="post" enctype="multipart/form-data" @submit="submitting = true">
+      <input type="hidden" name="ocr_backend" :value="backend">
+
+      <div
+        class="dropzone"
+        :class="{ 'drag-over': dragging, 'has-files': files.length }"
+        @click="$refs.fileInput.click()"
+        @dragenter.prevent="dragging = true"
+        @dragover.prevent="dragging = true"
+        @dragleave.prevent="dragging = false"
+        @drop.prevent="handleDrop($event)"
+      >
+        <!-- Pixel Grid -->
+        <div class="grid"></div>
+
+        <!-- Content -->
+        <div class="dropzone-content">
+          <template x-if="!files.length">
+            <div class="drop-prompt">
+              <div class="drop-icon">+</div>
+              <div class="drop-text">Drop PDF</div>
+            </div>
+          </template>
+
+          <template x-if="files.length">
+            <div class="file-display">
+              <div class="file-count" x-text="files.length"></div>
+              <div class="file-label" x-text="files.length === 1 ? 'file' : 'files'"></div>
+              <div class="file-list">
+                <template x-for="(file, i) in files" :key="i">
+                  <div class="file-item" @click.stop="removeFile(i)">
+                    <span x-text="file.name"></span>
+                    <span class="remove">&times;</span>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
         </div>
-      </template>
-    </div>
 
-    <div class="backend-selector" x-show="files.length" x-transition>
-      <label class="backend-label">OCR Engine:</label>
-      <div class="backend-options">
-        <label class="backend-option">
-          <input type="radio" name="ocr_backend" value="local" {% if ocr_backend != 'mistral' %}checked{% endif %}>
-          <span class="backend-name">Local (PaddleOCR-VL)</span>
-          <span class="backend-status {% if local_ocr_available %}available{% else %}{% if local_ocr_auto_start %}will-start{% else %}unavailable{% endif %}{% endif %}">
-            {% if local_ocr_available %}Ready{% elif local_ocr_auto_start %}Will start{% else %}Offline{% endif %}
-          </span>
-        </label>
-        {% if has_mistral_key %}
-        <label class="backend-option">
-          <input type="radio" name="ocr_backend" value="mistral" {% if ocr_backend == 'mistral' %}checked{% endif %}>
-          <span class="backend-name">Mistral OCR</span>
-          <span class="backend-status available">Cloud</span>
-        </label>
-        {% endif %}
+        <input
+          type="file"
+          name="pdf_files"
+          x-ref="fileInput"
+          accept=".pdf"
+          multiple
+          required
+          @change="handleFiles($event.target.files)"
+        >
       </div>
-    </div>
 
-    <button
-      type="submit"
-      class="submit-btn"
-      x-show="files.length"
-      x-transition
-      :disabled="submitting"
-      :class="{ 'loading': submitting }"
-    >
-      <span class="btn-text">Convert</span>
-      <span class="btn-loader"></span>
-    </button>
-  </form>
+      <!-- Convert Button -->
+      <button
+        type="submit"
+        class="convert-btn"
+        x-show="files.length"
+        x-transition:enter="fade-in"
+        :disabled="submitting"
+        :class="{ loading: submitting }"
+      >
+        <span class="btn-text">Convert</span>
+        <span class="btn-spinner"></span>
+      </button>
+    </form>
+  </main>
 
-  <p class="hint">Max {{ max_upload_mb }}MB</p>
+  <!-- Footer -->
+  <footer class="footer">
+    <span class="limit">{{ max_upload_mb }}MB max</span>
+  </footer>
 </div>
 
 <script>
@@ -95,6 +118,7 @@ function uploader() {
     files: [],
     dragging: false,
     submitting: false,
+    backend: '{% if ocr_backend == "mistral" %}mistral{% else %}local{% endif %}',
 
     handleFiles(fileList) {
       this.files = [...fileList].filter(f => f.type === 'application/pdf');
