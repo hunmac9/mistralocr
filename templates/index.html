@@ -5,12 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>MistraLOCR</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%230c0c0c' width='100' height='100'/><text y='70' x='50' text-anchor='middle' font-size='60' fill='%23c8ff00'>O</text></svg>">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=2" />
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=3" />
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body>
 
 <div class="app" x-data="uploader()">
+  <!-- Full screen grid background -->
+  <div class="screen-grid" :class="{ 'active': dragging }"></div>
+
   <!-- Header -->
   <header class="header">
     <div class="logo">MISTRALOCR</div>
@@ -53,9 +56,6 @@
         @dragleave.prevent="dragging = false"
         @drop.prevent="handleDrop($event)"
       >
-        <!-- Pixel Grid -->
-        <div class="grid"></div>
-
         <!-- Content -->
         <div class="dropzone-content">
           <template x-if="!files.length">

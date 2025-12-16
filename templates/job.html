@@ -5,48 +5,60 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Processing - MistraLOCR</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%230c0c0c' width='100' height='100'/><text y='70' x='50' text-anchor='middle' font-size='60' fill='%23c8ff00'>O</text></svg>">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=2" />
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=3" />
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body>
 
-<div class="job-page" x-data="jobStatus('{{ job_id }}', '{{ status }}', '{{ download_url or '' }}', '{{ error or '' }}')">
+<div class="job-screen" x-data="jobStatus('{{ job_id }}', '{{ status }}', '{{ download_url or '' }}', '{{ error or '' }}')">
+  <!-- Full screen grid background -->
+  <div class="screen-grid" :class="{ 'active': isProcessing, 'success': status === 'done', 'error': status === 'error' }"></div>
+
   <!-- Header -->
   <header class="header">
-    <div class="logo">MISTRALOCR</div>
+    <a href="{{ url_for('index') }}" class="logo">MISTRALOCR</a>
+    <div class="job-id">{{ job_id[:8] }}</div>
   </header>
 
-  <!-- Main -->
-  <main class="job-main">
-    <div class="job-content">
-      <div class="status-display">
-        <!-- Status Indicator -->
-        <div class="status-indicator">
-          <div class="grid"></div>
-          <div class="status-icon" :class="status" x-text="statusIcon"></div>
-        </div>
-
-        <!-- Status Text -->
-        <div class="status-text" x-text="statusLabel"></div>
-
-        <!-- Download Button (when done) -->
-        <div x-show="status === 'done'" x-transition class="result-box success">
-          <a :href="downloadUrl" class="download-btn">Download</a>
-        </div>
-
-        <!-- Error Message -->
-        <div x-show="status === 'error'" x-transition class="result-box error">
-          <p class="error-message" x-text="errorMsg"></p>
-        </div>
+  <!-- Center content -->
+  <main class="job-center">
+    <div class="job-status-box">
+      <!-- Status symbol -->
+      <div class="status-symbol" :class="status">
+        <span x-text="statusIcon"></span>
       </div>
 
-      <a href="{{ url_for('index') }}" class="back-link">&larr; New conversion</a>
+      <!-- Current message -->
+      <div class="current-message" x-text="currentMessage"></div>
+
+      <!-- Download button -->
+      <a
+        x-show="status === 'done'"
+        x-transition
+        :href="downloadUrl"
+        class="download-btn"
+      >Download Result</a>
+
+      <!-- Error display -->
+      <div x-show="status === 'error'" x-transition class="error-box">
+        <span x-text="errorMsg"></span>
+      </div>
     </div>
   </main>
 
+  <!-- Log feed -->
+  <div class="log-feed" x-show="logs.length > 0">
+    <template x-for="(log, i) in logs.slice(-8)" :key="i">
+      <div class="log-entry" :class="{ 'latest': i === logs.slice(-8).length - 1 }">
+        <span class="log-time" x-text="log.time"></span>
+        <span class="log-msg" x-text="log.message"></span>
+      </div>
+    </template>
+  </div>
+
   <!-- Footer -->
   <footer class="footer">
-    <span class="limit">Job {{ job_id[:8] }}</span>
+    <a href="{{ url_for('index') }}" class="back-link">&larr; New</a>
   </footer>
 </div>
 
@@ -56,35 +68,48 @@ function jobStatus(jobId, initialStatus, initialDownloadUrl, initialError) {
     status: initialStatus,
     downloadUrl: initialDownloadUrl,
     errorMsg: initialError,
+    currentMessage: initialStatus === 'queued' ? 'Waiting in queue' : 'Connecting...',
+    logs: [],
     eventSource: null,
+    startTime: Date.now(),
 
     get isProcessing() {
       return this.status === 'queued' || this.status === 'processing';
     },
 
-    get statusLabel() {
-      const labels = {
-        queued: 'Queued',
-        processing: 'Processing',
-        done: 'Complete',
-        error: 'Failed'
-      };
-      return labels[this.status] || this.status;
-    },
-
     get statusIcon() {
       const icons = {
-        queued: '...',
-        processing: '~',
-        done: '✓',
-        error: '!'
+        queued: '○',
+        processing: '◐',
+        done: '●',
+        error: '✕'
       };
       return icons[this.status] || '?';
     },
 
+    formatTime(timestamp) {
+      const elapsed = Math.floor((timestamp * 1000 - this.startTime) / 1000);
+      const mins = Math.floor(elapsed / 60);
+      const secs = elapsed % 60;
+      if (mins > 0) return `${mins}m ${secs}s`;
+      return `${secs}s`;
+    },
+
+    addLog(message, timestamp) {
+      const time = timestamp ? this.formatTime(timestamp) : '0s';
+      this.logs.push({ time, message });
+    },
+
     init() {
+      this.addLog('Job started');
       if (this.isProcessing) {
         this.connect(jobId);
+      } else if (this.status === 'done') {
+        this.currentMessage = 'Complete';
+        this.addLog('Download ready');
+      } else if (this.status === 'error') {
+        this.currentMessage = 'Failed';
+        this.addLog(this.errorMsg || 'An error occurred');
       }
     },
 
@@ -95,11 +120,20 @@ function jobStatus(jobId, initialStatus, initialDownloadUrl, initialError) {
         const data = JSON.parse(event.data);
         this.status = data.status;
 
+        if (data.message) {
+          this.currentMessage = data.message;
+          this.addLog(data.message, data.timestamp);
+        }
+
         if (data.status === 'done') {
           this.downloadUrl = data.download_url;
+          this.currentMessage = 'Complete';
+          this.addLog('Download ready', data.timestamp);
           this.eventSource.close();
         } else if (data.status === 'error') {
           this.errorMsg = data.error || 'An error occurred';
+          this.currentMessage = 'Failed';
+          this.addLog(this.errorMsg, data.timestamp);
           this.eventSource.close();
         }
       };
@@ -107,6 +141,8 @@ function jobStatus(jobId, initialStatus, initialDownloadUrl, initialError) {
       this.eventSource.onerror = () => {
         this.status = 'error';
         this.errorMsg = 'Connection lost';
+        this.currentMessage = 'Connection lost';
+        this.addLog('Connection lost');
         this.eventSource.close();
       };
     }

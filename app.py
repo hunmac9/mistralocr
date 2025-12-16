@@ -337,7 +337,7 @@ jobs = {}
 job_queues = {} # Stores message queues for SSE updates per job_id
 jobs_lock = threading.Lock()
 
-def _publish_status(job_id, status, data=None):
+def _publish_status(job_id, status, data=None, message=None):
     """Helper to update job status and push to SSE queue."""
     with jobs_lock:
         if job_id not in jobs: return # Job might have been cancelled or timed out
@@ -347,14 +347,16 @@ def _publish_status(job_id, status, data=None):
 
         # Push update to the SSE queue for this job
         if job_id in job_queues:
-            update_message = {"status": status}
+            update_message = {"status": status, "timestamp": time.time()}
+            if message:
+                update_message["message"] = message
             if data:
                 update_message.update(data)
             job_queues[job_id].put(json.dumps(update_message)) # Send JSON string
 
 # --- Background worker function ---
 def background_process_job(job_id, temp_pdf_path, ocr_backend: OCRBackend, session_id):
-    _publish_status(job_id, 'processing')
+    _publish_status(job_id, 'processing', message='Initializing')
     try:
         session_upload_dir = UPLOAD_FOLDER / session_id
         session_output_dir = OUTPUT_FOLDER / session_id
@@ -367,16 +369,22 @@ def background_process_job(job_id, temp_pdf_path, ocr_backend: OCRBackend, sessi
         final_output_dir = session_output_dir / pdf_base_sanitized
         final_output_dir.mkdir(exist_ok=True)
 
+        file_size_mb = temp_pdf_path.stat().st_size / (1024 * 1024)
+        _publish_status(job_id, 'processing', message=f'Analyzing PDF ({file_size_mb:.1f}MB)')
+
         # Check if file exceeds max size limit (applies to all backends)
         if temp_pdf_path.stat().st_size > mistral_max_mb * 1024 * 1024:
+            _publish_status(job_id, 'processing', message=f'Splitting large PDF')
             print(f"File exceeds {mistral_max_mb}MB, splitting before processing...")
             split_files = split_pdf(temp_pdf_path, mistral_max_mb)
+            _publish_status(job_id, 'processing', message=f'Split into {len(split_files)} parts')
             all_markdowns = []
             all_images = []
             image_counter = 1
             image_rename_map = {}
 
             for idx, split_file in enumerate(split_files, 1):
+                _publish_status(job_id, 'processing', message=f'Processing part {idx}/{len(split_files)}')
                 print(f"Processing split part {idx}: {split_file.name}")
                 part_base, md_content, img_files, md_path, img_dir = process_pdf(
                     split_file, ocr_backend, session_output_dir
@@ -415,6 +423,7 @@ def background_process_job(job_id, temp_pdf_path, ocr_backend: OCRBackend, sessi
 
             merged_markdown = re.sub(r'!\[.*?\]\((.*?)\)', replace_alt, merged_markdown)
 
+            _publish_status(job_id, 'processing', message='Merging results')
             merged_md_path = final_output_dir / f"{pdf_base_sanitized}.md"
             with open(merged_md_path, "w", encoding="utf-8") as f_md:
                 f_md.write(merged_markdown)
@@ -422,9 +431,11 @@ def background_process_job(job_id, temp_pdf_path, ocr_backend: OCRBackend, sessi
 
         else:
             # Process normally
+            _publish_status(job_id, 'processing', message='Running OCR')
             processed_pdf_base, markdown_content, image_filenames, md_path, img_dir = process_pdf(
                 temp_pdf_path, ocr_backend, session_output_dir
             )
+            _publish_status(job_id, 'processing', message=f'Extracted {len(image_filenames)} images')
             # Move markdown and images into final_output_dir if not already there
             if img_dir != final_output_dir:
                 for img_file in image_filenames:
@@ -452,8 +463,10 @@ def background_process_job(job_id, temp_pdf_path, ocr_backend: OCRBackend, sessi
             print(f"  Warning: Could not delete OCR JSON file {final_ocr_json}: {del_err}")
 
         # Create ZIP of the final output folder
+        _publish_status(job_id, 'processing', message='Creating archive')
         create_zip_archive(final_output_dir, zip_output_path)
 
+        _publish_status(job_id, 'processing', message='Cleaning up')
         # Cleanup upload dir
         try:
             if session_upload_dir.exists():

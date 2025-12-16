@@ -2,12 +2,12 @@
 Flask==3.1.0
 gunicorn==23.0.0
 
-# PyTorch (CPU-only version, compatible with numpy 2.x)
+# PyTorch (CPU-only version)
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.5.1+cpu
 torchvision==0.20.1+cpu
 
-# Transformers for PaddleOCR-VL model (needs recent version for use_kernel_forward_from_hub)
+# Transformers for PaddleOCR-VL model
 transformers>=4.46.0
 
 # Image processing
@@ -19,11 +19,14 @@ PyMuPDF>=1.24.0
 # Hugging Face Hub for model downloads
 huggingface-hub>=0.20.0
 
-# Additional dependencies that may be needed
+# Model dependencies
 einops
 accelerate
 safetensors
 sentencepiece
+protobuf>=3.20.0
+scipy
+tiktoken
 
-# Numpy - let pip resolve compatible version
+# Numpy
 numpy>=1.26.0
