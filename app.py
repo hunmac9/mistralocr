@@ -15,6 +15,8 @@ import threading
 import time
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 from PyPDF2 import PdfReader, PdfWriter
 from PIL import Image
@@ -26,6 +28,27 @@ from ocr_backends import get_ocr_backend, OCRBackend, OCRResponse, LocalOCRBacke
 load_dotenv() # Load environment variables from .env file
 
 app = Flask(__name__)
+
+# --- Rate Limiting Configuration ---
+# Default limits can be overridden via environment variables
+RATE_LIMIT_DEFAULT = os.getenv('RATE_LIMIT_DEFAULT', '100 per hour')
+RATE_LIMIT_OCR = os.getenv('RATE_LIMIT_OCR', '10 per minute')
+RATE_LIMIT_STORAGE = os.getenv('RATE_LIMIT_STORAGE', 'memory://')
+
+def get_rate_limit_key():
+    """Get identifier for rate limiting - API key if provided, else IP address."""
+    api_key = request.headers.get('X-API-Key')
+    if api_key:
+        return f"key:{api_key}"
+    return get_remote_address()
+
+limiter = Limiter(
+    key_func=get_rate_limit_key,
+    app=app,
+    default_limits=[RATE_LIMIT_DEFAULT],
+    storage_uri=RATE_LIMIT_STORAGE,
+    strategy="fixed-window",
+)
 
 # --- Configuration ---
 FLASK_PORT_INT = int(os.getenv('FLASK_PORT', 5009)) # Get port for default SERVER_NAME
@@ -643,6 +666,33 @@ def job_status(job_id):
          return render_template('job.html', job_id=job_id, status='error', error='Invalid or expired job ID')
 
     return render_template('job.html', job_id=job_id, status=initial_status) # Pass initial status
+
+# --- API Blueprint Registration ---
+from api import api_bp
+
+# Share state with API module via app config
+app.config['jobs'] = jobs
+app.config['job_queues'] = job_queues
+app.config['jobs_lock'] = jobs_lock
+app.config['background_process_job'] = background_process_job
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['OUTPUT_FOLDER'] = OUTPUT_FOLDER
+app.config['OCR_BACKEND'] = OCR_BACKEND
+app.config['LOCAL_OCR_URL'] = LOCAL_OCR_URL
+app.config['LOCAL_OCR_CONTAINER_NAME'] = LOCAL_OCR_CONTAINER_NAME
+app.config['LOCAL_OCR_DOCKER_IMAGE'] = LOCAL_OCR_DOCKER_IMAGE
+app.config['LOCAL_OCR_IDLE_TIMEOUT'] = LOCAL_OCR_IDLE_TIMEOUT
+app.config['LOCAL_OCR_AUTO_START'] = LOCAL_OCR_AUTO_START
+app.config['ALLOWED_EXTENSIONS'] = ALLOWED_EXTENSIONS
+
+# Apply rate limiting to API endpoints
+limiter.limit(RATE_LIMIT_OCR)(api_bp)
+
+# Register the API blueprint
+app.register_blueprint(api_bp)
+
+print(f"API endpoints registered at /api/v1/")
+print(f"Rate limits: Default={RATE_LIMIT_DEFAULT}, OCR={RATE_LIMIT_OCR}")
 
 if __name__ == '__main__':
     # Set SERVER_NAME for external URL generation if running locally without Gunicorn/proxy
