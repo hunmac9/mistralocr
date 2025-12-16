@@ -671,13 +671,23 @@ def view_image(session_id, pdf_base, filename):
 @app.route('/download/<session_id>/<filename>')
 def download_file(session_id, filename):
     """Serves the generated ZIP file for download."""
-    safe_session_id = secure_filename(session_id)
+    # Session ID is a system-generated UUID, so we use it directly
+    # Only sanitize the filename for safety
     safe_filename = secure_filename(filename)
-    directory = OUTPUT_FOLDER / safe_session_id
+    directory = OUTPUT_FOLDER / session_id
     file_path = directory / safe_filename
 
-    if not str(file_path.resolve()).startswith(str(directory.resolve())): return "Invalid path", 400
-    if not file_path.is_file(): return "File not found", 404
+    print(f"Download request - looking for: {file_path}")
+
+    if not str(file_path.resolve()).startswith(str(OUTPUT_FOLDER.resolve())):
+        print(f"  Invalid path (directory traversal attempt)")
+        return "Invalid path", 400
+    if not file_path.is_file():
+        print(f"  File not found at: {file_path}")
+        print(f"  Directory exists: {directory.exists()}")
+        if directory.exists():
+            print(f"  Directory contents: {list(directory.iterdir())}")
+        return "File not found", 404
 
     print(f"Serving ZIP for download: {file_path}")
     return send_from_directory(directory, safe_filename, as_attachment=True)
