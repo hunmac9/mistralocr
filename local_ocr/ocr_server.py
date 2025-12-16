@@ -196,22 +196,32 @@ def process_image(image: Image.Image, task: str = "ocr") -> str:
 
     prompt = PROMPTS.get(task, PROMPTS["ocr"])
 
-    # Build messages - just text content, no image placeholder
-    messages = [{"role": "user", "content": prompt}]
+    # Build messages with image placeholder
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "image": image},
+                {"type": "text", "text": prompt},
+            ]
+        }
+    ]
 
     with model_lock:
         print(f"    [OCR] Preparing inputs...")
         prep_start = time.time()
 
-        # Apply chat template to get the text prompt
-        text = processor.apply_chat_template(
+        # Use apply_chat_template with tokenize=True to get inputs directly
+        # max_length must be high enough to fit all vision tokens (images can need 3000+ tokens)
+        inputs = processor.apply_chat_template(
             messages,
-            tokenize=False,
-            add_generation_prompt=True
+            tokenize=True,
+            add_generation_prompt=True,
+            return_tensors="pt",
+            return_dict=True,
+            max_length=8192,    # Prevent truncation of vision tokens
+            truncation=True
         )
-
-        # Process image and text together
-        inputs = processor(text=[text], images=[image], return_tensors="pt")
 
         # Move tensors to device
         inputs = {k: (v.to(DEVICE) if isinstance(v, torch.Tensor) else v)
@@ -233,12 +243,10 @@ def process_image(image: Image.Image, task: str = "ocr") -> str:
 
         print(f"    [OCR] Inference completed in {time.time() - gen_start:.2f}s")
 
-        # Decode and extract response
-        result = processor.batch_decode(generated, skip_special_tokens=True)[0]
-
-        # Extract just the answer (after the prompt)
-        if text in result:
-            result = result.split(text)[-1].strip()
+        # Decode and extract response - trim input tokens
+        input_len = inputs["input_ids"].shape[1]
+        generated_ids = generated[:, input_len:]
+        result = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
     return result.strip()
 

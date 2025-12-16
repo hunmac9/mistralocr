@@ -30,3 +30,6 @@ tiktoken
 
 # Numpy
 numpy>=1.26.0
+
+# Chandra OCR model
+chandra-ocr>=0.1.8
