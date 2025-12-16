@@ -1,0 +1,25 @@
+# Flask and WSGI server
+Flask==3.1.0
+gunicorn==23.0.0
+
+# PyTorch (CPU-only version for reduced size)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.1.2+cpu
+
+# Transformers for PaddleOCR-VL model
+transformers>=4.40.0
+
+# Image processing
+Pillow>=10.0.0
+
+# PDF processing
+PyMuPDF>=1.24.0
+
+# Hugging Face Hub for model downloads
+huggingface-hub>=0.20.0
+
+# Additional dependencies that may be needed
+einops
+accelerate
+safetensors
+sentencepiece

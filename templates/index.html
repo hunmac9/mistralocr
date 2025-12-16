@@ -3,47 +3,125 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>PDF to Markdown OCR</title>
+<title>PDF to Markdown</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" />
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body>
-<!-- Removed app-container div -->
 
-  <header class="app-header fade-in">
-    <h1><i class="fas fa-file-pdf"></i> PDF to Markdown</h1>
-    <p class="tagline">Convert PDFs to Markdown with Mistral AI OCR</p>
-  </header>
+<div class="container" x-data="uploader()">
+  <h1 class="title">PDF <span class="accent">to</span> Markdown</h1>
 
-  <main class="app-main fade-in">
+  <form action="/process" method="post" enctype="multipart/form-data" @submit="submitting = true">
+    <div
+      class="drop-zone"
+      :class="{ 'drag-over': dragging }"
+      @click="$refs.fileInput.click()"
+      @dragenter.prevent="dragging = true"
+      @dragover.prevent="dragging = true"
+      @dragleave.prevent="dragging = false"
+      @drop.prevent="handleDrop($event)"
+    >
+      <div class="grid-overlay"></div>
+      <div class="drop-content">
+        <div class="drop-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M12 16V4m0 0L8 8m4-4l4 4"/>
+            <path d="M3 15v4a2 2 0 002 2h14a2 2 0 002-2v-4"/>
+          </svg>
+        </div>
+        <p class="drop-text" x-text="files.length ? files.length + ' file' + (files.length > 1 ? 's' : '') + ' selected' : 'Drop PDFs here'"></p>
+        <p class="drop-subtext" x-show="!files.length">or click to browse</p>
+      </div>
+      <input
+        type="file"
+        name="pdf_files"
+        x-ref="fileInput"
+        accept=".pdf"
+        multiple
+        required
+        @change="handleFiles($event.target.files)"
+      >
+    </div>
 
-    <section class="upload-section"> <!-- Removed glassmorphism -->
-      <h2><i class="fas fa-upload"></i> Upload PDFs</h2>
-      <form action="/process" method="post" enctype="multipart/form-data" id="upload-form">
-        <input type="file" name="pdf_files" accept=".pdf" multiple required>
-        <button type="submit" id="submit-btn">Upload and Convert</button>
-      </form>
-      <div class="loader" id="loader" style="display:none;"></div>
-      <small>Multiple files allowed. Max size: {{ max_upload_mb }} MB (auto-compresses if over {{ mistral_max_mb }} MB).</small>
-    </section>
+    <div class="file-list" x-show="files.length" x-transition>
+      <template x-for="(file, index) in files" :key="index">
+        <div class="file-item">
+          <span class="file-name" x-text="file.name"></span>
+          <button type="button" class="file-remove" @click="removeFile(index)">&times;</button>
+        </div>
+      </template>
+    </div>
 
-    <section class="status-section fade-in"> <!-- Removed glassmorphism -->
-      <h2><i class="fas fa-info-circle"></i> Instructions</h2>
-      <p>Select your PDF files and click "Upload and Convert". You will be redirected to a status page that updates automatically.</p>
-    </section>
+    <div class="backend-selector" x-show="files.length" x-transition>
+      <label class="backend-label">OCR Engine:</label>
+      <div class="backend-options">
+        <label class="backend-option">
+          <input type="radio" name="ocr_backend" value="local" {% if ocr_backend != 'mistral' %}checked{% endif %}>
+          <span class="backend-name">Local (PaddleOCR-VL)</span>
+          <span class="backend-status {% if local_ocr_available %}available{% else %}{% if local_ocr_auto_start %}will-start{% else %}unavailable{% endif %}{% endif %}">
+            {% if local_ocr_available %}Ready{% elif local_ocr_auto_start %}Will start{% else %}Offline{% endif %}
+          </span>
+        </label>
+        {% if has_mistral_key %}
+        <label class="backend-option">
+          <input type="radio" name="ocr_backend" value="mistral" {% if ocr_backend == 'mistral' %}checked{% endif %}>
+          <span class="backend-name">Mistral OCR</span>
+          <span class="backend-status available">Cloud</span>
+        </label>
+        {% endif %}
+      </div>
+    </div>
 
-  </main>
+    <button
+      type="submit"
+      class="submit-btn"
+      x-show="files.length"
+      x-transition
+      :disabled="submitting"
+      :class="{ 'loading': submitting }"
+    >
+      <span class="btn-text">Convert</span>
+      <span class="btn-loader"></span>
+    </button>
+  </form>
 
-  <footer class="app-footer fade-in">
-    <p>&copy; 2025. Licensed under MPL 2.0.</p>
-  </footer>
-
-<!-- Removed closing app-container div -->
+  <p class="hint">Max {{ max_upload_mb }}MB</p>
+</div>
 
 <script>
-document.getElementById('upload-form').addEventListener('submit', function() {
-  document.getElementById('loader').style.display = 'block';
-});
+function uploader() {
+  return {
+    files: [],
+    dragging: false,
+    submitting: false,
+
+    handleFiles(fileList) {
+      this.files = [...fileList].filter(f => f.type === 'application/pdf');
+      this.syncInput();
+    },
+
+    handleDrop(e) {
+      this.dragging = false;
+      const dropped = [...e.dataTransfer.files].filter(f => f.type === 'application/pdf');
+      if (dropped.length) {
+        this.files = [...this.files, ...dropped];
+        this.syncInput();
+      }
+    },
+
+    removeFile(index) {
+      this.files.splice(index, 1);
+      this.syncInput();
+    },
+
+    syncInput() {
+      const dt = new DataTransfer();
+      this.files.forEach(f => dt.items.add(f));
+      this.$refs.fileInput.files = dt.files;
+    }
+  }
+}
 </script>
 </body>
 </html>

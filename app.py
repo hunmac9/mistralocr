@@ -13,14 +13,15 @@ from uuid import uuid4
 from flask import Flask, request, render_template, jsonify, send_from_directory, url_for, redirect, Response # Added Response for SSE
 import threading
 import time
-from mistralai import Mistral, DocumentURLChunk
-from mistralai.models import OCRResponse
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
 from PyPDF2 import PdfReader, PdfWriter
 from PIL import Image
 import io
+
+# Import OCR backend abstraction
+from ocr_backends import get_ocr_backend, OCRBackend, OCRResponse, LocalOCRBackend
 
 load_dotenv() # Load environment variables from .env file
 
@@ -63,6 +64,23 @@ except ValueError:
 app.config['MAX_CONTENT_LENGTH'] = max_mb * 1024 * 1024
 print(f"Maximum upload size set to: {max_mb} MB")
 print(f"Mistral API max file size set to: {mistral_max_mb} MB")
+
+# --- OCR Backend Configuration ---
+# OCR_BACKEND: "auto" (default), "local", or "mistral"
+# - "auto": Try local OCR first, fall back to Mistral if API key provided
+# - "local": Use local PaddleOCR-VL only
+# - "mistral": Use Mistral OCR API only
+OCR_BACKEND = os.getenv('OCR_BACKEND', 'auto').lower()
+LOCAL_OCR_URL = os.getenv('LOCAL_OCR_URL', 'http://localhost:8000')
+LOCAL_OCR_IDLE_TIMEOUT = int(os.getenv('LOCAL_OCR_IDLE_TIMEOUT', '300'))
+LOCAL_OCR_AUTO_START = os.getenv('LOCAL_OCR_AUTO_START', 'true').lower() == 'true'
+LOCAL_OCR_DOCKER_IMAGE = os.getenv('LOCAL_OCR_DOCKER_IMAGE', 'mistralocr-paddleocr:latest')
+LOCAL_OCR_CONTAINER_NAME = os.getenv('LOCAL_OCR_CONTAINER_NAME', 'mistralocr-paddleocr')
+
+print(f"OCR Backend: {OCR_BACKEND}")
+print(f"Local OCR URL: {LOCAL_OCR_URL}")
+print(f"Local OCR Auto-Start: {LOCAL_OCR_AUTO_START}")
+print(f"Local OCR Idle Timeout: {LOCAL_OCR_IDLE_TIMEOUT}s")
 
 ALLOWED_EXTENSIONS = {'pdf'}
 
@@ -118,9 +136,14 @@ def split_pdf(pdf_path: Path, max_size_mb: int) -> list[Path]:
 
 # --- Core Processing Logic ---
 
-def process_pdf(pdf_path: Path, api_key: str, session_output_dir: Path) -> tuple[str, str, list[str], Path, Path]:
+def process_pdf(pdf_path: Path, ocr_backend: OCRBackend, session_output_dir: Path) -> tuple[str, str, list[str], Path, Path]:
     """
-    Processes a single PDF file using Mistral OCR and saves results.
+    Processes a single PDF file using the specified OCR backend and saves results.
+
+    Args:
+        pdf_path: Path to the PDF file to process
+        ocr_backend: OCR backend instance to use for processing
+        session_output_dir: Directory to save output files
 
     Returns:
         A tuple (pdf_base_name, final_markdown_content, list_of_image_filenames, path_to_markdown_file, path_to_images_dir)
@@ -129,46 +152,38 @@ def process_pdf(pdf_path: Path, api_key: str, session_output_dir: Path) -> tuple
     """
     pdf_base = pdf_path.stem
     pdf_base_sanitized = secure_filename(pdf_base) # Use sanitized version for directory/file names
-    print(f"Processing {pdf_path.name}...")
+    print(f"Processing {pdf_path.name} with {ocr_backend.get_name()}...")
 
     pdf_output_dir = session_output_dir / pdf_base_sanitized # e.g., output/session_id/my_document/
     pdf_output_dir.mkdir(exist_ok=True)
     # Images will be saved directly in pdf_output_dir now
 
-    client = Mistral(api_key=api_key)
-    ocr_response: OCRResponse | None = None
-    uploaded_file_id = None # Store only the ID for cleanup
-
     try:
-        print(f"  Uploading {pdf_path.name} (size: {pdf_path.stat().st_size / (1024*1024):.2f} MB) to Mistral...")
-        with open(pdf_path, "rb") as f:
-            pdf_bytes = f.read()
-        mistral_file = client.files.upload(
-            file={"file_name": pdf_path.name, "content": pdf_bytes}, purpose="ocr"
-        )
-        uploaded_file_id = mistral_file.id # Store ID for cleanup
+        print(f"  Processing {pdf_path.name} (size: {pdf_path.stat().st_size / (1024*1024):.2f} MB)...")
 
-        print(f"  File uploaded (ID: {uploaded_file_id}). Getting signed URL...")
-        signed_url = client.files.get_signed_url(file_id=uploaded_file_id, expiry=300) # Keep expiry short
-
-        print(f"  Calling Mistral OCR API for file ID {uploaded_file_id} (this may take a while)...")
+        # Use the OCR backend to process the PDF
         start_time = time.time()
-        ocr_response = client.ocr.process(
-            document=DocumentURLChunk(document_url=signed_url.url),
-            model="mistral-ocr-latest", # Consider making model configurable if needed
-            include_image_base64=True # Keep this True for image extraction
-        )
+        ocr_response = ocr_backend.process(pdf_path)
         end_time = time.time()
         print(f"  OCR processing complete for {pdf_path.name} in {end_time - start_time:.2f} seconds.")
 
         # Save Raw OCR Response (Mandatory now)
         ocr_json_path = pdf_output_dir / "ocr_response.json"
         try:
+            response_dict = {
+                "model": ocr_response.model,
+                "processing_time": ocr_response.processing_time,
+                "pages": [
+                    {
+                        "index": page.index,
+                        "markdown": page.markdown,
+                        "images": [{"id": img.id, "image_base64": img.image_base64[:100] + "..."} for img in page.images]
+                    }
+                    for page in ocr_response.pages
+                ]
+            }
             with open(ocr_json_path, "w", encoding="utf-8") as json_file:
-                if hasattr(ocr_response, 'model_dump'):
-                    json.dump(ocr_response.model_dump(), json_file, indent=4, ensure_ascii=False)
-                else:
-                     json.dump(ocr_response.dict(), json_file, indent=4, ensure_ascii=False)
+                json.dump(response_dict, json_file, indent=4, ensure_ascii=False)
             print(f"  Raw OCR response saved to {ocr_json_path}")
         except Exception as json_err:
             # Make saving JSON mandatory - raise error if it fails
@@ -276,18 +291,7 @@ def process_pdf(pdf_path: Path, api_key: str, session_output_dir: Path) -> tuple
         else:
             error_msg = error_str # Use the raw error string if no JSON found
         print(f"  Error processing {pdf_path.name}: {error_msg}")
-        # No need for separate cleanup here, finally block handles it
         raise Exception(error_msg) # Re-raise the simplified error message
-    finally:
-        # Ensure the uploaded file is deleted from Mistral even if errors occur
-        if uploaded_file_id:
-            try:
-                print(f"  Attempting to delete temporary file {uploaded_file_id} from Mistral...")
-                client.files.delete(file_id=uploaded_file_id)
-                print(f"  Deleted temporary file {uploaded_file_id} from Mistral.")
-            except Exception as delete_err:
-                # Log warning but don't let cleanup failure hide the original error
-                print(f"  Warning: Could not delete file {uploaded_file_id} from Mistral: {delete_err}")
 
 
 def create_zip_archive(source_dir: Path, output_zip_path: Path):
@@ -326,7 +330,7 @@ def _publish_status(job_id, status, data=None):
             job_queues[job_id].put(json.dumps(update_message)) # Send JSON string
 
 # --- Background worker function ---
-def background_process_job(job_id, temp_pdf_path, api_key_to_use, session_id):
+def background_process_job(job_id, temp_pdf_path, ocr_backend: OCRBackend, session_id):
     _publish_status(job_id, 'processing')
     try:
         session_upload_dir = UPLOAD_FOLDER / session_id
@@ -340,7 +344,7 @@ def background_process_job(job_id, temp_pdf_path, api_key_to_use, session_id):
         final_output_dir = session_output_dir / pdf_base_sanitized
         final_output_dir.mkdir(exist_ok=True)
 
-        # Check if file exceeds Mistral API limit
+        # Check if file exceeds max size limit (applies to all backends)
         if temp_pdf_path.stat().st_size > mistral_max_mb * 1024 * 1024:
             print(f"File exceeds {mistral_max_mb}MB, splitting before processing...")
             split_files = split_pdf(temp_pdf_path, mistral_max_mb)
@@ -352,7 +356,7 @@ def background_process_job(job_id, temp_pdf_path, api_key_to_use, session_id):
             for idx, split_file in enumerate(split_files, 1):
                 print(f"Processing split part {idx}: {split_file.name}")
                 part_base, md_content, img_files, md_path, img_dir = process_pdf(
-                    split_file, api_key_to_use, session_output_dir
+                    split_file, ocr_backend, session_output_dir
                 )
                 # Adjust image references in markdown
                 for img_file in img_files:
@@ -396,7 +400,7 @@ def background_process_job(job_id, temp_pdf_path, api_key_to_use, session_id):
         else:
             # Process normally
             processed_pdf_base, markdown_content, image_filenames, md_path, img_dir = process_pdf(
-                temp_pdf_path, api_key_to_use, session_output_dir
+                temp_pdf_path, ocr_backend, session_output_dir
             )
             # Move markdown and images into final_output_dir if not already there
             if img_dir != final_output_dir:
@@ -458,7 +462,24 @@ def background_process_job(job_id, temp_pdf_path, api_key_to_use, session_id):
 
 @app.route('/')
 def index():
-    return render_template('index.html', max_upload_mb=max_mb, mistral_max_mb=mistral_max_mb)
+    # Check if local OCR is available
+    local_ocr_available = False
+    try:
+        import requests
+        response = requests.get(f"{LOCAL_OCR_URL}/health", timeout=2)
+        local_ocr_available = response.status_code == 200
+    except:
+        pass
+
+    return render_template(
+        'index.html',
+        max_upload_mb=max_mb,
+        mistral_max_mb=mistral_max_mb,
+        ocr_backend=OCR_BACKEND,
+        local_ocr_available=local_ocr_available,
+        local_ocr_auto_start=LOCAL_OCR_AUTO_START,
+        has_mistral_key=bool(os.getenv("MISTRAL_API_KEY")),
+    )
 
 @app.route('/process', methods=['POST'])
 def handle_process():
@@ -466,18 +487,29 @@ def handle_process():
         return jsonify({"error": "No PDF files part in the request"}), 400
 
     files = request.files.getlist('pdf_files')
+
+    # Get OCR backend configuration
+    # Allow form override of backend type
+    backend_type = request.form.get('ocr_backend', OCR_BACKEND)
     env_api_key = os.getenv("MISTRAL_API_KEY")
     form_api_key = request.form.get('api_key')
+    api_key_to_use = env_api_key or form_api_key
 
-    api_key_to_use = None
-    if env_api_key:
-        api_key_to_use = env_api_key
-        print("Using API key from environment variable.")
-    elif form_api_key:
-        api_key_to_use = form_api_key
-        print("Using API key from form input as fallback.")
-    else:
-        return jsonify({"error": "Mistral API Key is required. Set the MISTRAL_API_KEY environment variable or provide it in the form."}), 400
+    # Create the OCR backend based on configuration
+    try:
+        ocr_backend = get_ocr_backend(
+            backend_type=backend_type,
+            mistral_api_key=api_key_to_use,
+            local_server_url=LOCAL_OCR_URL,
+            container_name=LOCAL_OCR_CONTAINER_NAME,
+            docker_image=LOCAL_OCR_DOCKER_IMAGE,
+            idle_timeout=LOCAL_OCR_IDLE_TIMEOUT,
+            auto_start=LOCAL_OCR_AUTO_START,
+        )
+        print(f"Using OCR backend: {ocr_backend.get_name()}")
+    except ValueError as e:
+        # This happens if Mistral backend is requested but no API key
+        return jsonify({"error": str(e)}), 400
 
     if not files or all(f.filename == '' for f in files):
         return jsonify({"error": "No selected PDF files"}), 400
@@ -491,7 +523,7 @@ def handle_process():
 
             # Initialize job status and SSE queue
             with jobs_lock:
-                jobs[job_id] = {"status": "queued", "download_url": None, "error": None, "session_id": session_id}
+                jobs[job_id] = {"status": "queued", "download_url": None, "error": None, "session_id": session_id, "backend": ocr_backend.get_name()}
                 job_queues[job_id] = queue.Queue() # Create a queue for this job's updates
 
             # Save uploaded file immediately
@@ -511,7 +543,7 @@ def handle_process():
             _publish_status(job_id, 'queued')
 
             # Start background thread
-            t = threading.Thread(target=background_process_job, args=(job_id, temp_pdf_path, api_key_to_use, session_id))
+            t = threading.Thread(target=background_process_job, args=(job_id, temp_pdf_path, ocr_backend, session_id))
             t.daemon = True # Allow app to exit even if threads are running (optional)
             t.start()
             processed_file = True

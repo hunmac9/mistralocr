@@ -1,31 +1,34 @@
-# Mistral PDF-to-Markdown OCR Web App
+# PDF-to-Markdown OCR Web App
 
 [![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-WebApp-green?logo=flask)](https://flask.palletsprojects.com/)
 
-A simple web application using Flask and the Mistral AI API to convert PDF files into standard Markdown documents, extracting text and images. Easily run using Docker Compose.
+A web application using Flask to convert PDF files into standard Markdown documents, extracting text and images. Supports both **local OCR** (using PaddleOCR-VL) and **cloud OCR** (using Mistral AI API).
 
 *Inspired by an Obsidian version at [diegomarzaa/pdf-ocr-obsidian](https://github.com/diegomarzaa/pdf-ocr-obsidian)*
 
-*This version is specifically adapted to import to a moddified version of Outline, but should work with most markdown importers*
+*This version is specifically adapted to import to a modified version of Outline, but should work with most markdown importers*
 
-## ✨ Features
+## Features
 
--   **⬆️ Upload Interface:** Simple web UI for uploading PDFs.
--   **🤖 Mistral OCR:** Leverages [Mistral OCR](https://mistral.ai/news/mistral-ocr) for accurate text/image extraction.
--   **📄 Standard Markdown:** Outputs clean Markdown with relative image links.
--   **🖼️ Image Handling:** Saves extracted images alongside the Markdown file using original filenames.
--   **📦 Packaged Output:** Delivers results (Markdown, images, raw JSON response) as a downloadable ZIP archive.
--   **⚙️ Configurable Upload Limit:** Set maximum PDF upload size via environment variable (default 100MB); automatic compression for PDFs over Mistral's 50mb limit.
--   **🐳 Dockerized:** Ready to run with Docker Compose.
+-   **Local OCR (Default):** Uses PaddleOCR-VL-0.9B for privacy-preserving, no-API-key-required OCR
+-   **Cloud OCR (Optional):** Leverages [Mistral OCR](https://mistral.ai/news/mistral-ocr) for accurate text/image extraction
+-   **Upload Interface:** Simple web UI for uploading PDFs with OCR engine selection
+-   **Standard Markdown:** Outputs clean Markdown with relative image links
+-   **Image Handling:** Saves extracted images alongside the Markdown file in WebP format
+-   **Packaged Output:** Delivers results (Markdown + images) as a downloadable ZIP archive
+-   **Memory Efficient:** Local OCR model automatically unloads after idle timeout to save memory
+-   **Configurable Upload Limit:** Set maximum PDF upload size via environment variable (default 100MB)
+-   **Dockerized:** Ready to run with Docker Compose
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
--   [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](https://docs.docker.com/compose/install/) installed.
--   A Mistral AI API Key from [console.mistral.ai/api-keys](https://console.mistral.ai/api-keys).
+-   [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](https://docs.docker.com/compose/install/) installed
+-   8GB+ RAM recommended for local OCR (uses ~4-6GB when model is loaded)
+-   (Optional) A Mistral AI API Key from [console.mistral.ai/api-keys](https://console.mistral.ai/api-keys) if you want to use cloud OCR
 
 ### Running the App
 
@@ -44,47 +47,124 @@ A simple web application using Flask and the Mistral AI API to convert PDF files
     cp .env.example .env
     ```
 
-    - Edit `.env` and **add your Mistral API key**:
-
-    ```dotenv
-    MISTRAL_API_KEY=your_actual_api_key_here
-    ```
-
-    - Optionally, customize the port (`FLASK_PORT`), max upload sizes, or other settings in `.env`.
+    - Optionally customize settings in `.env` (see Configuration section below)
 
 3. **Launch with Docker Compose:**
 
     ```bash
-    docker-compose up --build -d
+    docker compose up --build -d
     ```
 
-    * `--build`: Rebuilds the image if needed.
-    * `-d`: Runs the container in the background (detached mode).
+    * `--build`: Rebuilds the images if needed
+    * `-d`: Runs the containers in the background (detached mode)
+
+    **Note:** The first run will download the PaddleOCR-VL model (~2GB), which may take several minutes.
 
 4. **Access the Web App:**
 
     Open your browser and go to:
 
     ```
-    http://localhost:YOUR_PORT
+    http://localhost:5009
     ```
 
-    Replace `YOUR_PORT` with the value of `FLASK_PORT` in your `.env` file (default is 5009).
+    (Or replace `5009` with your configured `FLASK_PORT`)
 
 5. **Stopping the App:**
 
     ```bash
-    docker-compose down
+    docker compose down
     ```
 
-## ⚙️ How It Works
+## Configuration
 
-1.  User uploads PDF(s) via the web UI.
-2.  The Flask backend compresses PDFs over 50mb, sends compressed file to the Mistral OCR API.
-3.  Mistral processes the PDF, returning markdown formatted text and images.
-4.  The app saves the markdown, json, and images in a folder. 
-5.  Everything is zipped up and served to the web UI.
+All configuration is done via environment variables in the `.env` file:
 
-## 📜 License
+### OCR Backend Settings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OCR_BACKEND` | `auto` | OCR engine: `auto`, `local`, or `mistral` |
+| `LOCAL_OCR_IDLE_TIMEOUT` | `300` | Seconds before local OCR model unloads from memory |
+| `MISTRAL_API_KEY` | - | Mistral API key (only needed for Mistral backend) |
+
+**Backend Modes:**
+- `auto`: Uses local OCR by default, falls back to Mistral if API key is available
+- `local`: Uses only local PaddleOCR-VL (no API key required)
+- `mistral`: Uses only Mistral OCR API (requires API key)
+
+### Server Settings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FLASK_PORT` | `5009` | Port the application runs on |
+| `SERVER_NAME` | `localhost:5009` | Hostname for generating download URLs |
+| `MAX_UPLOAD_MB` | `100` | Maximum upload size in MB |
+| `MISTRAL_MAX_MB` | `50` | Max file size before splitting (applies to all backends) |
+
+## How It Works
+
+1. User uploads PDF(s) via the web UI and selects an OCR engine
+2. The Flask backend sends the PDF to the selected OCR backend:
+   - **Local:** PaddleOCR-VL processes the PDF locally in Docker
+   - **Cloud:** PDF is uploaded to Mistral OCR API
+3. OCR engine returns markdown-formatted text and images
+4. The app saves the markdown and images in a folder
+5. Everything is zipped up and served to the web UI
+
+### Memory Management
+
+The local OCR model (PaddleOCR-VL-0.9B) uses approximately 4-6GB of RAM when loaded. To minimize resource usage:
+
+- The model is **only loaded when needed** (lazy loading)
+- After processing, the model **automatically unloads** after the idle timeout (default: 5 minutes)
+- When unloaded, the service uses minimal memory (~100MB)
+
+You can adjust the idle timeout via `LOCAL_OCR_IDLE_TIMEOUT` environment variable.
+
+## Architecture
+
+```
++-------------------+      +-------------------+
+|                   |      |                   |
+|   Main App        | ---> |   Local OCR       |
+|   (Flask)         |      |   (PaddleOCR-VL)  |
+|   Port: 5009      |      |   Port: 8000      |
+|                   |      |                   |
++-------------------+      +-------------------+
+        |
+        | (optional, if MISTRAL_API_KEY set)
+        v
++-------------------+
+|                   |
+|   Mistral OCR     |
+|   (Cloud API)     |
+|                   |
++-------------------+
+```
+
+## Standalone Local OCR (Without Docker Compose)
+
+If you want to manage the local OCR container separately:
+
+```bash
+# Build the local OCR image
+docker build -t mistralocr-paddleocr:latest ./local_ocr
+
+# Run the local OCR server
+docker run -d \
+  --name mistralocr-paddleocr \
+  -p 8000:8000 \
+  -e IDLE_TIMEOUT=300 \
+  -v paddleocr-cache:/home/appuser/.cache \
+  mistralocr-paddleocr:latest
+
+# Test the health endpoint
+curl http://localhost:8000/health
+```
+
+Then run the main app with `LOCAL_OCR_URL=http://localhost:8000` and `LOCAL_OCR_AUTO_START=false`.
+
+## License
 
 This project is licensed under the Mozilla Public License Version 2.0. See the [LICENSE](LICENSE) file for details.

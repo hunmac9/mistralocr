@@ -1,12 +1,13 @@
 services:
+  # Main application service
   app:
     build: .
     # Read port from .env file, default to 5009 if not set
     ports:
       - "${FLASK_PORT:-5009}:${FLASK_PORT:-5009}"
     environment:
-      # Required: API Key (loaded from .env)
-      MISTRAL_API_KEY: ${MISTRAL_API_KEY}
+      # Optional: Mistral API Key (only needed if using Mistral backend)
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
 
       # Optional: Port (loaded from .env, defaults here match port mapping)
       FLASK_PORT: ${FLASK_PORT:-5009}
@@ -22,16 +23,61 @@ services:
       # Optional: Flask Debug Mode (loaded from .env)
       FLASK_DEBUG: ${FLASK_DEBUG:-False}
 
-      # Optional: Override default upload/output folders (relative to /app)
-      # UPLOAD_FOLDER: ${UPLOAD_FOLDER:-uploads}
-      # OUTPUT_FOLDER: ${OUTPUT_FOLDER:-output}
+      # --- OCR Backend Configuration ---
+      # OCR_BACKEND: "auto" (default), "local", or "mistral"
+      OCR_BACKEND: ${OCR_BACKEND:-auto}
 
-    # Optional volumes for persisting data outside the container
-    # volumes:
-      # - ./uploads:/app/uploads # Persist uploaded files (app currently cleans this up, maybe remove?)
-      # - ./output:/app/output   # Persist generated output files
+      # Local OCR service URL (use Docker service name)
+      LOCAL_OCR_URL: http://local-ocr:8000
+
+      # Local OCR settings
+      LOCAL_OCR_IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
+      LOCAL_OCR_AUTO_START: "false"  # Container managed by compose, not auto-started
+
+    depends_on:
+      local-ocr:
+        condition: service_healthy
+    networks:
+      - ocr-network
 
     # Override the default CMD:
-    # - Bind Gunicorn to the port specified by FLASK_PORT (defaulting to 5009)
-    # - Increase the worker timeout to 300 seconds (5 minutes)
     command: ["gunicorn", "--bind", "0.0.0.0:${FLASK_PORT:-5009}", "--timeout", "300", "app:app"]
+
+  # Local OCR service using PaddleOCR-VL
+  local-ocr:
+    build:
+      context: ./local_ocr
+      dockerfile: Dockerfile
+    environment:
+      # Idle timeout in seconds (model unloads after this period of inactivity)
+      IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
+      PORT: 8000
+      HOST: 0.0.0.0
+      # Model path (from Hugging Face Hub)
+      MODEL_PATH: PaddlePaddle/PaddleOCR-VL
+    volumes:
+      # Persist model cache to avoid re-downloading
+      - paddleocr-cache:/home/appuser/.cache
+    networks:
+      - ocr-network
+    # Resource limits for CPU-only deployment
+    deploy:
+      resources:
+        limits:
+          memory: 8G  # Limit memory usage
+        reservations:
+          memory: 4G  # Reserve minimum memory
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s  # Allow time for initial model download
+
+networks:
+  ocr-network:
+    driver: bridge
+
+volumes:
+  # Named volume for persistent model cache
+  paddleocr-cache:

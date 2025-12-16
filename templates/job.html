@@ -3,97 +3,102 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Job Status - PDF to Markdown OCR</title>
+<title>Converting - PDF to Markdown</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" />
-<!-- Removed meta refresh tag -->
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body>
-<!-- Removed app-container div -->
 
-  <header class="app-header fade-in">
-    <h1><i class="fas fa-file-pdf"></i> PDF to Markdown</h1>
-  </header>
+<div class="container" x-data="jobStatus('{{ job_id }}', '{{ status }}', '{{ download_url or '' }}', '{{ error or '' }}')">
+  <h1 class="title">PDF <span class="accent">to</span> Markdown</h1>
 
-  <main class="app-main fade-in">
+  <div class="status-container">
+    <div class="status-badge" :class="status">
+      <span class="dot"></span>
+      <span x-text="statusLabel"></span>
+    </div>
 
-    <section class="status-section fade-in"> <!-- Removed glassmorphism -->
-      <h2><i class="fas fa-info-circle"></i> Job Status</h2>
-      <p>Job ID: <span id="job-id">{{ job_id }}</span></p>
-      <p>Status: <span id="status-text">{{ status }}</span></p>
+    <div class="progress-ring indeterminate" x-show="isProcessing" x-transition>
+      <svg width="120" height="120" viewBox="0 0 120 120">
+        <circle class="bg" cx="60" cy="60" r="54"/>
+        <circle class="fg" cx="60" cy="60" r="54"/>
+      </svg>
+      <div class="progress-text" x-text="status === 'queued' ? 'Queued' : 'Processing'"></div>
+    </div>
 
-      <div id="loader-container">
-        {% if status in ['queued', 'processing'] %}
-        <div class="loader"></div>
-        {% endif %}
+    <div x-show="status === 'done'" x-transition>
+      <div class="result-box success">
+        <a :href="downloadUrl" class="download-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2"/>
+          </svg>
+          Download ZIP
+        </a>
       </div>
+    </div>
 
-      <div id="result-container">
-        {% if status == 'done' %}
-          <p><a href="{{ download_url }}" class="button"><i class="fas fa-download"></i> Download ZIP</a></p>
-        {% elif status == 'error' %}
-          <p class="error">Error: {{ error }}</p>
-        {% else %}
-          <p id="wait-message">Please wait...</p>
-        {% endif %}
+    <div x-show="status === 'error'" x-transition>
+      <div class="result-box error">
+        <p class="error-message" x-text="errorMsg"></p>
       </div>
+    </div>
 
-      <p><a href="{{ url_for('index') }}">Start another conversion</a></p>
-    </section>
-
-  </main>
-
-  <footer class="app-footer fade-in">
-    <p>&copy; 2025. Licensed under MPL 2.0.</p>
-  </footer>
-
-<!-- Removed closing app-container div -->
+    <a href="{{ url_for('index') }}" class="back-link">&larr; Convert another</a>
+  </div>
+</div>
 
 <script>
-  const jobId = document.getElementById('job-id').textContent;
-  const statusText = document.getElementById('status-text');
-  const loaderContainer = document.getElementById('loader-container');
-  const resultContainer = document.getElementById('result-container');
-  const waitMessage = document.getElementById('wait-message');
+function jobStatus(jobId, initialStatus, initialDownloadUrl, initialError) {
+  return {
+    status: initialStatus,
+    downloadUrl: initialDownloadUrl,
+    errorMsg: initialError,
+    eventSource: null,
 
-  const eventSource = new EventSource(`/stream/${jobId}`);
+    get isProcessing() {
+      return this.status === 'queued' || this.status === 'processing';
+    },
 
-  eventSource.onmessage = function(event) {
-    const data = JSON.parse(event.data);
-    console.log("SSE Received:", data); // For debugging
+    get statusLabel() {
+      const labels = {
+        queued: 'Queued',
+        processing: 'Processing',
+        done: 'Complete',
+        error: 'Error'
+      };
+      return labels[this.status] || this.status;
+    },
 
-    statusText.textContent = data.status;
-
-    // Clear previous results/messages
-    loaderContainer.innerHTML = '';
-    resultContainer.innerHTML = '';
-    if (waitMessage) waitMessage.style.display = 'none';
-
-    if (data.status === 'queued' || data.status === 'processing') {
-      loaderContainer.innerHTML = '<div class="loader"></div>';
-      resultContainer.innerHTML = '<p id="wait-message">Please wait...</p>';
-    } else if (data.status === 'done') {
-      if (data.download_url) {
-        resultContainer.innerHTML = `<p><a href="${data.download_url}" class="button"><i class="fas fa-download"></i> Download ZIP</a></p>`;
-      } else {
-         // Handle case where URL generation failed but processing succeeded
-         resultContainer.innerHTML = `<p class="error">Processing finished, but download link is unavailable. Check server logs.</p>`;
+    init() {
+      if (this.isProcessing) {
+        this.connect(jobId);
       }
-      eventSource.close(); // Close connection once done
-    } else if (data.status === 'error') {
-      resultContainer.innerHTML = `<p class="error">Error: ${data.error || 'An unknown error occurred.'}</p>`;
-      eventSource.close(); // Close connection on error
+    },
+
+    connect(jobId) {
+      this.eventSource = new EventSource(`/stream/${jobId}`);
+
+      this.eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        this.status = data.status;
+
+        if (data.status === 'done') {
+          this.downloadUrl = data.download_url;
+          this.eventSource.close();
+        } else if (data.status === 'error') {
+          this.errorMsg = data.error || 'An error occurred';
+          this.eventSource.close();
+        }
+      };
+
+      this.eventSource.onerror = () => {
+        this.status = 'error';
+        this.errorMsg = 'Connection lost';
+        this.eventSource.close();
+      };
     }
-  };
-
-  eventSource.onerror = function(err) {
-    console.error("EventSource failed:", err);
-    statusText.textContent = 'error';
-    loaderContainer.innerHTML = '';
-    resultContainer.innerHTML = '<p class="error">Connection error. Could not get status updates.</p>';
-    eventSource.close();
-  };
-
+  }
+}
 </script>
 </body>
 </html>
