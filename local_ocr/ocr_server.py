@@ -167,6 +167,8 @@ def process_image(image: Image.Image, task: str = "ocr") -> str:
     ]
 
     with model_lock:
+        print(f"    [OCR] Preparing inputs...")
+        prep_start = time.time()
         inputs = processor.apply_chat_template(
             messages,
             tokenize=True,
@@ -174,9 +176,19 @@ def process_image(image: Image.Image, task: str = "ocr") -> str:
             return_dict=True,
             return_tensors="pt"
         ).to(DEVICE)
+        print(f"    [OCR] Inputs prepared in {time.time() - prep_start:.2f}s")
+        print(f"    [OCR] Input keys: {list(inputs.keys())}")
 
+        print(f"    [OCR] Starting inference (this may take several minutes on CPU)...")
+        gen_start = time.time()
         with torch.no_grad():
-            outputs = model.generate(**inputs, max_new_tokens=4096)
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=1024,
+                do_sample=False,
+                use_cache=True
+            )
+        print(f"    [OCR] Inference completed in {time.time() - gen_start:.2f}s")
 
         result = processor.batch_decode(outputs, skip_special_tokens=True)[0]
 
