@@ -21,6 +21,44 @@
   padding: 0;
 }
 
+/* Reset buttons and inputs */
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: 0;
+  outline: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+button {
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+}
+
+button:focus {
+  outline: none;
+}
+
+button:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Remove default list styles */
+ul, ol {
+  list-style: none;
+}
+
 html, body {
   height: 100%;
 }
@@ -30,6 +68,7 @@ body {
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* App Layout */
@@ -71,13 +110,16 @@ body {
   padding: 0.5rem 0.75rem;
   background: transparent;
   border: none;
+  border-radius: 0;
   color: var(--text-muted);
   font-family: var(--mono);
   font-size: 0.7rem;
+  font-weight: 500;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   cursor: pointer;
   transition: all 0.15s;
+  line-height: 1;
 }
 
 .toggle-btn:hover:not(:disabled) {
@@ -295,6 +337,7 @@ body {
   padding: 1rem;
   background: var(--accent);
   border: none;
+  border-radius: 0;
   color: var(--bg);
   font-family: var(--mono);
   font-size: 0.75rem;
@@ -306,6 +349,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  line-height: 1;
 }
 
 .convert-btn:hover:not(:disabled) {
@@ -461,6 +505,8 @@ body {
   width: 100%;
   padding: 1rem;
   background: var(--accent);
+  border: none;
+  border-radius: 0;
   color: var(--bg);
   text-decoration: none;
   font-family: var(--mono);
@@ -468,6 +514,7 @@ body {
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+  line-height: 1;
   transition: opacity 0.2s;
 }
 
