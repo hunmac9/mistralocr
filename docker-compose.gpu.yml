@@ -41,16 +41,12 @@ services:
   local-ocr:
     build:
       context: ./local_ocr
-      dockerfile: Dockerfile
-      args:
-        USE_GPU: "true"
+      dockerfile: Dockerfile.gpu
     environment:
       IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
       PORT: 8000
       HOST: 0.0.0.0
       MODEL_PATH: PaddlePaddle/PaddleOCR-VL
-      # Force CUDA device (will fall back to CPU if unavailable)
-      FORCE_CUDA: "true"
     volumes:
       - paddleocr-cache:/home/appuser/.cache
     networks:
