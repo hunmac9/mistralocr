@@ -1,17 +1,17 @@
-# Docker Compose for GPU-enabled deployment
+# Docker Compose for GPU-enabled deployment using vLLM
 # Use with: docker compose -f docker-compose.gpu.yml up -d --build
 #
 # Requirements:
-# - NVIDIA GPU with CUDA support
+# - NVIDIA GPU with CUDA support (6GB+ VRAM recommended)
 # - NVIDIA Container Toolkit installed
 #   - Linux: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
 #   - Windows (Docker Desktop): Enable WSL2 backend, install NVIDIA drivers in Windows
 #     https://docs.docker.com/desktop/gpu/
 #
-# This configuration will:
-# - Use GPU for inference (much faster than CPU)
-# - Automatically unload model after idle timeout to free VRAM
-# - Fall back to CPU if GPU is not available
+# This configuration:
+# - Uses vLLM for PaddleOCR-VL (official recommended deployment)
+# - Exposes OpenAI-compatible API at port 8000
+# - GPU required for vLLM
 
 services:
   # Main application service
@@ -30,25 +30,22 @@ services:
       LOCAL_OCR_URL: http://local-ocr:8000
       LOCAL_OCR_IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
       LOCAL_OCR_AUTO_START: "false"
+      # Use vLLM mode for GPU
+      LOCAL_OCR_USE_VLLM: "true"
     depends_on:
       local-ocr:
         condition: service_healthy
     networks:
       - ocr-network
-    command: ["gunicorn", "--bind", "0.0.0.0:${FLASK_PORT:-5009}", "--timeout", "300", "app:app"]
+    command: ["gunicorn", "--bind", "0.0.0.0:${FLASK_PORT:-5009}", "--timeout", "600", "app:app"]
 
-  # Local OCR service with GPU support
+  # PaddleOCR-VL via vLLM (official deployment method)
   local-ocr:
-    build:
-      context: ./local_ocr
-      dockerfile: Dockerfile.gpu
+    image: vllm/vllm-openai:latest
     environment:
-      IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
-      PORT: 8000
-      HOST: 0.0.0.0
-      MODEL_PATH: PaddlePaddle/PaddleOCR-VL
+      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
     volumes:
-      - paddleocr-cache:/home/appuser/.cache
+      - vllm-cache:/root/.cache
     networks:
       - ocr-network
     # GPU passthrough configuration
@@ -60,15 +57,24 @@ services:
               count: 1
               capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s
+      start_period: 300s
+    # vLLM server command
+    command: >
+      --model PaddlePaddle/PaddleOCR-VL
+      --trust-remote-code
+      --max-num-batched-tokens 16384
+      --no-enable-prefix-caching
+      --dtype bfloat16
+      --host 0.0.0.0
+      --port 8000
 
 networks:
   ocr-network:
     driver: bridge
 
 volumes:
-  paddleocr-cache:
+  vllm-cache:

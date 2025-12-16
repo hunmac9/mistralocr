@@ -3,10 +3,14 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 """
-Local OCR Server using PaddleOCR-VL model.
+Local OCR Server supporting multiple OCR models.
 
-This server provides a REST API for OCR processing using the PaddleOCR-VL-0.9B model.
+This server provides a REST API for OCR processing using either:
+- PaddleOCR-VL-0.9B model
+- Chandra OCR model (datalab-to/chandra)
+
 It implements lazy loading and automatic unloading to minimize memory usage when idle.
+Models are mutually exclusive - only one can be loaded at a time.
 """
 
 import os
@@ -17,24 +21,34 @@ import base64
 import threading
 import tempfile
 from pathlib import Path
-from uuid import uuid4
+from enum import Enum
 
 from flask import Flask, request, jsonify, Response
 from PIL import Image
 import json
 import fitz  # PyMuPDF for PDF handling
 import torch
-from transformers import AutoModelForCausalLM, AutoProcessor
 
 app = Flask(__name__)
 
 # --- Configuration ---
-MODEL_PATH = os.getenv("MODEL_PATH", "PaddlePaddle/PaddleOCR-VL")
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "paddle")  # "paddle" or "chandra"
 IDLE_TIMEOUT = int(os.getenv("IDLE_TIMEOUT", "300"))  # 5 minutes default
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "100"))
 app.config['MAX_CONTENT_LENGTH'] = MAX_UPLOAD_MB * 1024 * 1024
 
+# Model paths
+PADDLE_MODEL_PATH = os.getenv("PADDLE_MODEL_PATH", "PaddlePaddle/PaddleOCR-VL")
+CHANDRA_MODEL_PATH = os.getenv("CHANDRA_MODEL_PATH", "datalab-to/chandra")
+
+
+class ModelType(Enum):
+    PADDLE = "paddle"
+    CHANDRA = "chandra"
+
+
 # --- Global Model State ---
+current_model_type: ModelType | None = None
 model = None
 processor = None
 model_lock = threading.Lock()
@@ -57,8 +71,8 @@ else:
     DEVICE = "cpu"
     print(f"Using device: {DEVICE} (GPU not available)")
 
-# Prompts for different OCR tasks
-PROMPTS = {
+# Prompts for PaddleOCR tasks
+PADDLE_PROMPTS = {
     "ocr": "OCR:",
     "table": "Table Recognition:",
     "formula": "Formula Recognition:",
@@ -66,16 +80,61 @@ PROMPTS = {
 }
 
 
-def load_model():
-    """Load the PaddleOCR-VL model into memory."""
-    global model, processor
+def unload_model():
+    """Unload the current model from memory to free resources."""
+    global model, processor, current_model_type
 
     with model_lock:
-        if model is not None:
-            print("Model already loaded")
-            return True
+        if model is None:
+            print("Model already unloaded")
+            return
 
-        print(f"Loading PaddleOCR-VL model from {MODEL_PATH}...")
+        model_name = current_model_type.value if current_model_type else "unknown"
+
+        # Log memory before unloading (GPU)
+        if DEVICE == "cuda":
+            mem_before = torch.cuda.memory_allocated() / (1024**3)
+            print(f"Unloading {model_name} model to free VRAM (currently using {mem_before:.2f}GB)...")
+        else:
+            print(f"Unloading {model_name} model to free memory...")
+
+        # Move model to CPU first to free GPU memory immediately
+        if DEVICE == "cuda" and model is not None:
+            try:
+                model.to("cpu")
+            except:
+                pass
+
+        del model
+        del processor
+        model = None
+        processor = None
+        current_model_type = None
+
+        # Force garbage collection
+        gc.collect()
+
+        # Clear GPU memory
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            mem_after = torch.cuda.memory_allocated() / (1024**3)
+            print(f"Model unloaded successfully (GPU memory now: {mem_after:.2f}GB)")
+        else:
+            print("Model unloaded successfully")
+
+
+def load_paddle_model():
+    """Load the PaddleOCR-VL model into memory."""
+    global model, processor, current_model_type
+    from transformers import AutoModelForCausalLM, AutoProcessor
+
+    # If another model is loaded, unload it first
+    if current_model_type is not None:
+        unload_model()
+
+    with model_lock:
+        print(f"Loading PaddleOCR-VL model from {PADDLE_MODEL_PATH}...")
         start_time = time.time()
 
         try:
@@ -89,13 +148,14 @@ def load_model():
                 print(f"  GPU memory before loading: {mem_before:.2f}GB")
 
             model = AutoModelForCausalLM.from_pretrained(
-                MODEL_PATH,
+                PADDLE_MODEL_PATH,
                 trust_remote_code=True,
                 torch_dtype=dtype,
-                low_cpu_mem_usage=True,  # Reduce memory during loading
+                low_cpu_mem_usage=True,
             ).to(DEVICE).eval()
 
-            processor = AutoProcessor.from_pretrained(MODEL_PATH, trust_remote_code=True)
+            processor = AutoProcessor.from_pretrained(PADDLE_MODEL_PATH, trust_remote_code=True)
+            current_model_type = ModelType.PADDLE
 
             load_time = time.time() - start_time
 
@@ -105,52 +165,90 @@ def load_model():
                 mem_peak = torch.cuda.max_memory_allocated() / (1024**3)
                 print(f"  GPU memory after loading: {mem_after:.2f}GB (peak: {mem_peak:.2f}GB)")
 
-            print(f"Model loaded successfully in {load_time:.2f} seconds")
+            print(f"PaddleOCR-VL model loaded successfully in {load_time:.2f} seconds")
             return True
 
         except Exception as e:
-            print(f"Error loading model: {e}")
+            print(f"Error loading PaddleOCR-VL model: {e}")
             model = None
             processor = None
+            current_model_type = None
             return False
 
 
-def unload_model():
-    """Unload the model from memory to free resources."""
-    global model, processor
+def load_chandra_model():
+    """Load the Chandra OCR model into memory."""
+    global model, processor, current_model_type
+    from transformers import AutoModel, AutoProcessor
+
+    # If another model is loaded, unload it first
+    if current_model_type is not None:
+        unload_model()
 
     with model_lock:
-        if model is None:
-            print("Model already unloaded")
-            return
+        print(f"Loading Chandra OCR model from {CHANDRA_MODEL_PATH}...")
+        start_time = time.time()
 
-        # Log memory before unloading (GPU)
-        if DEVICE == "cuda":
-            mem_before = torch.cuda.memory_allocated() / (1024**3)
-            print(f"Unloading model to free VRAM (currently using {mem_before:.2f}GB)...")
-        else:
-            print("Unloading model to free memory...")
+        try:
+            # Log memory before loading
+            if DEVICE == "cuda":
+                torch.cuda.reset_peak_memory_stats()
+                mem_before = torch.cuda.memory_allocated() / (1024**3)
+                print(f"  GPU memory before loading: {mem_before:.2f}GB")
 
-        # Move model to CPU first to free GPU memory immediately
-        if DEVICE == "cuda" and model is not None:
-            model.to("cpu")
+            # Chandra uses AutoModel, not AutoModelForCausalLM
+            if DEVICE == "cuda":
+                model = AutoModel.from_pretrained(
+                    CHANDRA_MODEL_PATH,
+                    trust_remote_code=True,
+                    torch_dtype=torch.bfloat16,
+                    low_cpu_mem_usage=True,
+                ).cuda().eval()
+            else:
+                model = AutoModel.from_pretrained(
+                    CHANDRA_MODEL_PATH,
+                    trust_remote_code=True,
+                    torch_dtype=torch.float32,
+                    low_cpu_mem_usage=True,
+                ).eval()
 
-        del model
-        del processor
-        model = None
-        processor = None
+            processor = AutoProcessor.from_pretrained(CHANDRA_MODEL_PATH, trust_remote_code=True)
+            # Attach processor to model as Chandra expects
+            model.processor = processor
+            current_model_type = ModelType.CHANDRA
 
-        # Force garbage collection
-        gc.collect()
+            load_time = time.time() - start_time
 
-        # Clear GPU memory
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
-            mem_after = torch.cuda.memory_allocated() / (1024**3)
-            print(f"Model unloaded successfully (GPU memory now: {mem_after:.2f}GB)")
-        else:
-            print("Model unloaded successfully")
+            # Log memory after loading
+            if DEVICE == "cuda":
+                mem_after = torch.cuda.memory_allocated() / (1024**3)
+                mem_peak = torch.cuda.max_memory_allocated() / (1024**3)
+                print(f"  GPU memory after loading: {mem_after:.2f}GB (peak: {mem_peak:.2f}GB)")
+
+            print(f"Chandra OCR model loaded successfully in {load_time:.2f} seconds")
+            return True
+
+        except Exception as e:
+            print(f"Error loading Chandra OCR model: {e}")
+            import traceback
+            traceback.print_exc()
+            model = None
+            processor = None
+            current_model_type = None
+            return False
+
+
+def load_model(model_type: ModelType = None):
+    """Load the specified model (or default if not specified)."""
+    if model_type is None:
+        model_type = ModelType(DEFAULT_MODEL)
+
+    if model_type == ModelType.PADDLE:
+        return load_paddle_model()
+    elif model_type == ModelType.CHANDRA:
+        return load_chandra_model()
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
 
 
 def reset_idle_timer():
@@ -184,17 +282,13 @@ def check_and_unload():
         timer.start()
 
 
-def process_image(image: Image.Image, task: str = "ocr") -> str:
-    """Process a single image with OCR."""
+def process_image_paddle(image: Image.Image, task: str = "ocr") -> str:
+    """Process a single image with PaddleOCR-VL."""
     global model, processor
-
-    if model is None or processor is None:
-        if not load_model():
-            raise RuntimeError("Failed to load model")
 
     reset_idle_timer()
 
-    prompt = PROMPTS.get(task, PROMPTS["ocr"])
+    prompt = PADDLE_PROMPTS.get(task, PADDLE_PROMPTS["ocr"])
 
     # Build messages with image placeholder
     messages = [
@@ -208,18 +302,17 @@ def process_image(image: Image.Image, task: str = "ocr") -> str:
     ]
 
     with model_lock:
-        print(f"    [OCR] Preparing inputs...")
+        print(f"    [PaddleOCR] Preparing inputs...")
         prep_start = time.time()
 
         # Use apply_chat_template with tokenize=True to get inputs directly
-        # max_length must be high enough to fit all vision tokens (images can need 3000+ tokens)
         inputs = processor.apply_chat_template(
             messages,
             tokenize=True,
             add_generation_prompt=True,
             return_tensors="pt",
             return_dict=True,
-            max_length=8192,    # Prevent truncation of vision tokens
+            max_length=8192,
             truncation=True
         )
 
@@ -227,10 +320,9 @@ def process_image(image: Image.Image, task: str = "ocr") -> str:
         inputs = {k: (v.to(DEVICE) if isinstance(v, torch.Tensor) else v)
                   for k, v in inputs.items()}
 
-        print(f"    [OCR] Inputs prepared in {time.time() - prep_start:.2f}s")
-        print(f"    [OCR] Input keys: {list(inputs.keys())}")
+        print(f"    [PaddleOCR] Inputs prepared in {time.time() - prep_start:.2f}s")
 
-        print(f"    [OCR] Starting inference (this may take several minutes on CPU)...")
+        print(f"    [PaddleOCR] Starting inference...")
         gen_start = time.time()
 
         with torch.inference_mode():
@@ -241,7 +333,7 @@ def process_image(image: Image.Image, task: str = "ocr") -> str:
                 use_cache=True
             )
 
-        print(f"    [OCR] Inference completed in {time.time() - gen_start:.2f}s")
+        print(f"    [PaddleOCR] Inference completed in {time.time() - gen_start:.2f}s")
 
         # Decode and extract response - trim input tokens
         input_len = inputs["input_ids"].shape[1]
@@ -249,6 +341,59 @@ def process_image(image: Image.Image, task: str = "ocr") -> str:
         result = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
     return result.strip()
+
+
+def process_image_chandra(image: Image.Image) -> str:
+    """Process a single image with Chandra OCR."""
+    global model
+    from chandra.model.hf import generate_hf
+    from chandra.model.schema import BatchInputItem
+    from chandra.output import parse_markdown
+
+    reset_idle_timer()
+
+    with model_lock:
+        print(f"    [Chandra] Starting inference...")
+        gen_start = time.time()
+
+        batch = [
+            BatchInputItem(
+                image=image,
+                prompt_type="ocr_layout"
+            )
+        ]
+
+        result = generate_hf(batch, model)[0]
+        markdown = parse_markdown(result.raw)
+
+        print(f"    [Chandra] Inference completed in {time.time() - gen_start:.2f}s")
+
+    return markdown.strip()
+
+
+def process_image(image: Image.Image, task: str = "ocr", model_type: ModelType = None) -> str:
+    """Process a single image with OCR using the specified or current model."""
+    global model, processor, current_model_type
+
+    # Determine which model to use
+    if model_type is None:
+        if current_model_type is not None:
+            model_type = current_model_type
+        else:
+            model_type = ModelType(DEFAULT_MODEL)
+
+    # Load model if not loaded or if different model requested
+    if model is None or current_model_type != model_type:
+        if not load_model(model_type):
+            raise RuntimeError(f"Failed to load {model_type.value} model")
+
+    # Process with the appropriate model
+    if current_model_type == ModelType.PADDLE:
+        return process_image_paddle(image, task)
+    elif current_model_type == ModelType.CHANDRA:
+        return process_image_chandra(image)
+    else:
+        raise RuntimeError(f"Unknown model type: {current_model_type}")
 
 
 def pdf_to_images(pdf_path: Path, dpi: int = 200) -> list[Image.Image]:
@@ -289,6 +434,9 @@ def status():
     """Get model status."""
     return jsonify({
         "model_loaded": model is not None,
+        "current_model": current_model_type.value if current_model_type else None,
+        "available_models": ["paddle", "chandra"],
+        "default_model": DEFAULT_MODEL,
         "device": DEVICE,
         "idle_timeout": IDLE_TIMEOUT,
         "last_activity": last_activity_time,
@@ -296,22 +444,78 @@ def status():
     })
 
 
+@app.route('/models', methods=['GET'])
+def list_models():
+    """List available models."""
+    return jsonify({
+        "models": [
+            {
+                "id": "paddle",
+                "name": "PaddleOCR-VL",
+                "description": "PaddleOCR-VL-0.9B model for general OCR",
+                "loaded": current_model_type == ModelType.PADDLE
+            },
+            {
+                "id": "chandra",
+                "name": "Chandra OCR",
+                "description": "Chandra OCR model with layout preservation",
+                "loaded": current_model_type == ModelType.CHANDRA
+            }
+        ],
+        "current": current_model_type.value if current_model_type else None
+    })
+
+
 @app.route('/load', methods=['POST'])
 def load():
-    """Explicitly load the model."""
-    success = load_model()
+    """Explicitly load a model."""
+    data = request.get_json() or {}
+    model_name = data.get('model', DEFAULT_MODEL)
+
+    try:
+        model_type = ModelType(model_name)
+    except ValueError:
+        return jsonify({"status": "error", "message": f"Unknown model: {model_name}"}), 400
+
+    success = load_model(model_type)
     if success:
         reset_idle_timer()
-        return jsonify({"status": "loaded"})
+        return jsonify({"status": "loaded", "model": model_name})
     else:
-        return jsonify({"status": "error", "message": "Failed to load model"}), 500
+        return jsonify({"status": "error", "message": f"Failed to load model: {model_name}"}), 500
 
 
 @app.route('/unload', methods=['POST'])
 def unload():
-    """Explicitly unload the model."""
+    """Explicitly unload the current model."""
     unload_model()
     return jsonify({"status": "unloaded"})
+
+
+@app.route('/switch', methods=['POST'])
+def switch_model():
+    """Switch to a different model (unloads current, loads new)."""
+    data = request.get_json() or {}
+    model_name = data.get('model')
+
+    if not model_name:
+        return jsonify({"status": "error", "message": "Model name required"}), 400
+
+    try:
+        model_type = ModelType(model_name)
+    except ValueError:
+        return jsonify({"status": "error", "message": f"Unknown model: {model_name}"}), 400
+
+    # If same model, just return success
+    if current_model_type == model_type:
+        return jsonify({"status": "ok", "message": f"Model {model_name} already loaded"})
+
+    success = load_model(model_type)
+    if success:
+        reset_idle_timer()
+        return jsonify({"status": "switched", "model": model_name})
+    else:
+        return jsonify({"status": "error", "message": f"Failed to switch to model: {model_name}"}), 500
 
 
 @app.route('/ocr', methods=['POST'])
@@ -321,7 +525,8 @@ def ocr():
 
     Accepts multipart/form-data with:
     - file: The PDF or image file to process
-    - task: OCR task type (ocr, table, formula, chart) - default: ocr
+    - task: OCR task type (ocr, table, formula, chart) - default: ocr (PaddleOCR only)
+    - model: Model to use (paddle, chandra) - default: current or default model
     - include_images: Whether to include base64 images in response - default: true
 
     Returns JSON with OCR results in a format compatible with Mistral OCR response.
@@ -335,6 +540,15 @@ def ocr():
 
     task = request.form.get('task', 'ocr')
     include_images = request.form.get('include_images', 'true').lower() == 'true'
+    model_name = request.form.get('model')
+
+    # Determine model type
+    model_type = None
+    if model_name:
+        try:
+            model_type = ModelType(model_name)
+        except ValueError:
+            return jsonify({"error": f"Unknown model: {model_name}"}), 400
 
     # Save file temporarily
     suffix = Path(file.filename).suffix.lower()
@@ -361,7 +575,7 @@ def ocr():
             print(f"  Processing page {page_idx + 1}/{len(images)}...")
 
             # Run OCR on the page
-            markdown_content = process_image(img, task)
+            markdown_content = process_image(img, task, model_type)
 
             # Prepare page response
             page_data = {
@@ -385,21 +599,24 @@ def ocr():
             pages.append(page_data)
 
         processing_time = time.time() - start_time
-        print(f"OCR completed in {processing_time:.2f} seconds for {len(pages)} pages")
+        used_model = current_model_type.value if current_model_type else DEFAULT_MODEL
+        print(f"OCR completed in {processing_time:.2f} seconds for {len(pages)} pages using {used_model}")
 
         # Return response in format compatible with Mistral OCR
         return jsonify({
             "pages": pages,
-            "model": MODEL_PATH,
+            "model": used_model,
             "processing_time": processing_time
         })
 
     except Exception as e:
         print(f"Error processing file: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
     finally:
-        # Clean up temp file if it has been procesed by the OCR model properly
+        # Clean up temp file
         try:
             tmp_path.unlink()
         except:
@@ -412,6 +629,12 @@ def ocr_stream():
     Process a PDF or image file with OCR, streaming progress updates.
 
     Uses newline-delimited JSON (NDJSON) to stream progress and results.
+
+    Form parameters:
+    - file: The PDF or image file to process
+    - task: OCR task type (ocr, table, formula, chart) - default: ocr (PaddleOCR only)
+    - model: Model to use (paddle, chandra) - default: current or default model
+    - include_images: Whether to include base64 images in response - default: true
 
     Progress messages:
     - {"type": "status", "message": "..."}
@@ -428,6 +651,18 @@ def ocr_stream():
 
     task = request.form.get('task', 'ocr')
     include_images = request.form.get('include_images', 'true').lower() == 'true'
+    model_name = request.form.get('model')
+
+    # Determine model type
+    model_type = None
+    if model_name:
+        try:
+            model_type = ModelType(model_name)
+        except ValueError:
+            return Response(
+                json.dumps({"type": "error", "message": f"Unknown model: {model_name}"}) + "\n",
+                mimetype='application/x-ndjson'
+            )
 
     # Save file temporarily
     suffix = Path(file.filename).suffix.lower()
@@ -436,6 +671,7 @@ def ocr_stream():
         tmp_path = Path(tmp.name)
 
     def generate():
+        global current_model_type
         try:
             start_time = time.time()
 
@@ -457,9 +693,18 @@ def ocr_stream():
             total_pages = len(images)
             yield json.dumps({"type": "status", "message": f"Found {total_pages} pages"}) + "\n"
 
-            # Check if model is loaded, report loading status
-            if model is None:
-                yield json.dumps({"type": "status", "message": "Loading OCR model"}) + "\n"
+            # Determine target model
+            target_model = model_type
+            if target_model is None:
+                if current_model_type is not None:
+                    target_model = current_model_type
+                else:
+                    target_model = ModelType(DEFAULT_MODEL)
+
+            # Check if we need to load/switch models
+            if model is None or current_model_type != target_model:
+                model_display = "PaddleOCR-VL" if target_model == ModelType.PADDLE else "Chandra OCR"
+                yield json.dumps({"type": "status", "message": f"Loading {model_display} model"}) + "\n"
 
             # Process each page/image
             pages = []
@@ -476,7 +721,7 @@ def ocr_stream():
                 }) + "\n"
 
                 # Run OCR on the page
-                markdown_content = process_image(img, task)
+                markdown_content = process_image(img, task, target_model)
 
                 # Prepare page response
                 page_data = {
@@ -500,18 +745,21 @@ def ocr_stream():
                 pages.append(page_data)
 
             processing_time = time.time() - start_time
-            print(f"OCR completed in {processing_time:.2f} seconds for {len(pages)} pages")
+            used_model = current_model_type.value if current_model_type else DEFAULT_MODEL
+            print(f"OCR completed in {processing_time:.2f} seconds for {len(pages)} pages using {used_model}")
 
             # Send final result
             yield json.dumps({
                 "type": "result",
                 "pages": pages,
-                "model": MODEL_PATH,
+                "model": used_model,
                 "processing_time": processing_time
             }) + "\n"
 
         except Exception as e:
             print(f"Error processing file: {e}")
+            import traceback
+            traceback.print_exc()
             yield json.dumps({"type": "error", "message": str(e)}) + "\n"
 
         finally:
@@ -532,7 +780,8 @@ def ocr_image():
 
     JSON body:
     - image: Base64-encoded image data (with or without data URI prefix)
-    - task: OCR task type (ocr, table, formula, chart) - default: ocr
+    - task: OCR task type (ocr, table, formula, chart) - default: ocr (PaddleOCR only)
+    - model: Model to use (paddle, chandra) - default: current or default model
 
     Returns JSON with OCR text result.
     """
@@ -542,6 +791,15 @@ def ocr_image():
 
     task = data.get('task', 'ocr')
     image_data = data['image']
+    model_name = data.get('model')
+
+    # Determine model type
+    model_type = None
+    if model_name:
+        try:
+            model_type = ModelType(model_name)
+        except ValueError:
+            return jsonify({"error": f"Unknown model: {model_name}"}), 400
 
     # Handle data URI prefix
     if image_data.startswith('data:'):
@@ -556,15 +814,18 @@ def ocr_image():
         image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
 
         # Process with OCR
-        result = process_image(image, task)
+        result = process_image(image, task, model_type)
 
         return jsonify({
             "text": result,
-            "task": task
+            "task": task,
+            "model": current_model_type.value if current_model_type else DEFAULT_MODEL
         })
 
     except Exception as e:
         print(f"Error processing image: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
@@ -574,7 +835,8 @@ if __name__ == '__main__':
     debug = os.getenv('DEBUG', 'false').lower() == 'true'
 
     print(f"Starting OCR server on {host}:{port}")
-    print(f"Model: {MODEL_PATH}")
+    print(f"Default model: {DEFAULT_MODEL}")
+    print(f"Available models: PaddleOCR-VL ({PADDLE_MODEL_PATH}), Chandra ({CHANDRA_MODEL_PATH})")
     print(f"Idle timeout: {IDLE_TIMEOUT} seconds")
     print(f"Device: {DEVICE}")
 

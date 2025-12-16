@@ -177,12 +177,17 @@ class MistralOCRBackend(OCRBackend):
 
 class LocalOCRBackend(OCRBackend):
     """
-    OCR backend using local PaddleOCR-VL via Docker container.
+    OCR backend using local models via Docker container.
+
+    Supports multiple models:
+    - PaddleOCR-VL (paddle): General purpose OCR
+    - Chandra OCR (chandra): Layout-preserving OCR
 
     This backend manages the Docker container lifecycle automatically:
     - Starts the container on first use
     - Keeps it running while processing
     - Stops after idle timeout (configurable)
+    - Switches between models as requested
     """
 
     def __init__(
@@ -193,6 +198,7 @@ class LocalOCRBackend(OCRBackend):
         idle_timeout: int = 300,
         auto_start: bool = True,
         use_docker: bool = True,
+        local_model: str = "paddle",  # "paddle" or "chandra"
     ):
         self.server_url = server_url.rstrip('/')
         self.container_name = container_name
@@ -200,6 +206,7 @@ class LocalOCRBackend(OCRBackend):
         self.idle_timeout = idle_timeout
         self.auto_start = auto_start
         self.use_docker = use_docker
+        self.local_model = local_model
         self._container_started = False
         self._start_lock = threading.Lock()
 
@@ -212,6 +219,8 @@ class LocalOCRBackend(OCRBackend):
             return False
 
     def get_name(self) -> str:
+        if self.local_model == "chandra":
+            return "Local OCR (Chandra)"
         return "Local OCR (PaddleOCR-VL)"
 
     def _is_container_running(self) -> bool:
@@ -325,15 +334,16 @@ class LocalOCRBackend(OCRBackend):
             else:
                 raise RuntimeError("Local OCR server is not available")
 
-        self._report(on_progress, "Sending to OCR server")
-        print(f"  [Local OCR] Processing {pdf_path.name}...")
+        model_display = "Chandra" if self.local_model == "chandra" else "PaddleOCR"
+        self._report(on_progress, f"Sending to {model_display}")
+        print(f"  [Local OCR] Processing {pdf_path.name} with {model_display}...")
         start_time = time.time()
 
         try:
             # Use streaming endpoint for progress updates
             with open(pdf_path, 'rb') as f:
                 files = {'file': (pdf_path.name, f, 'application/pdf')}
-                data = {'task': 'ocr', 'include_images': 'true'}
+                data = {'task': 'ocr', 'include_images': 'true', 'model': self.local_model}
 
                 response = requests.post(
                     f"{self.server_url}/ocr/stream",
@@ -413,6 +423,7 @@ def get_ocr_backend(
     backend_type: str = "auto",
     mistral_api_key: Optional[str] = None,
     local_server_url: str = "http://localhost:8000",
+    local_model: str = "paddle",
     **kwargs
 ) -> OCRBackend:
     """
@@ -422,6 +433,7 @@ def get_ocr_backend(
         backend_type: One of "auto", "local", or "mistral"
         mistral_api_key: API key for Mistral (required if backend_type is "mistral")
         local_server_url: URL of local OCR server
+        local_model: Local model to use ("paddle" or "chandra")
         **kwargs: Additional arguments passed to backend constructor
 
     Returns:
@@ -437,15 +449,16 @@ def get_ocr_backend(
         return MistralOCRBackend(api_key=mistral_api_key)
 
     elif backend_type == "local":
-        return LocalOCRBackend(server_url=local_server_url, **kwargs)
+        return LocalOCRBackend(server_url=local_server_url, local_model=local_model, **kwargs)
 
     else:  # auto
         # Try local first (default)
-        local_backend = LocalOCRBackend(server_url=local_server_url, **kwargs)
+        local_backend = LocalOCRBackend(server_url=local_server_url, local_model=local_model, **kwargs)
 
         # Check if local is available or can be started
         if local_backend.is_available():
-            print("Using local OCR backend (already running)")
+            model_name = "Chandra" if local_model == "chandra" else "PaddleOCR-VL"
+            print(f"Using local OCR backend with {model_name} (already running)")
             return local_backend
 
         # If auto_start is enabled, try to start it

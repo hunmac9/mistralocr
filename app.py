@@ -91,7 +91,7 @@ print(f"Mistral API max file size set to: {mistral_max_mb} MB")
 # --- OCR Backend Configuration ---
 # OCR_BACKEND: "auto" (default), "local", or "mistral"
 # - "auto": Try local OCR first, fall back to Mistral if API key provided
-# - "local": Use local PaddleOCR-VL only
+# - "local": Use local OCR only
 # - "mistral": Use Mistral OCR API only
 OCR_BACKEND = os.getenv('OCR_BACKEND', 'auto').lower()
 LOCAL_OCR_URL = os.getenv('LOCAL_OCR_URL', 'http://localhost:8000')
@@ -99,9 +99,14 @@ LOCAL_OCR_IDLE_TIMEOUT = int(os.getenv('LOCAL_OCR_IDLE_TIMEOUT', '300'))
 LOCAL_OCR_AUTO_START = os.getenv('LOCAL_OCR_AUTO_START', 'true').lower() == 'true'
 LOCAL_OCR_DOCKER_IMAGE = os.getenv('LOCAL_OCR_DOCKER_IMAGE', 'mistralocr-paddleocr:latest')
 LOCAL_OCR_CONTAINER_NAME = os.getenv('LOCAL_OCR_CONTAINER_NAME', 'mistralocr-paddleocr')
+# LOCAL_OCR_MODEL: "paddle" (default) or "chandra"
+# - "paddle": Use PaddleOCR-VL model
+# - "chandra": Use Chandra OCR model (datalab-to/chandra)
+LOCAL_OCR_MODEL = os.getenv('LOCAL_OCR_MODEL', 'paddle').lower()
 
 print(f"OCR Backend: {OCR_BACKEND}")
 print(f"Local OCR URL: {LOCAL_OCR_URL}")
+print(f"Local OCR Model: {LOCAL_OCR_MODEL}")
 print(f"Local OCR Auto-Start: {LOCAL_OCR_AUTO_START}")
 print(f"Local OCR Idle Timeout: {LOCAL_OCR_IDLE_TIMEOUT}s")
 
@@ -501,12 +506,16 @@ def background_process_job(job_id, temp_pdf_path, ocr_backend: OCRBackend, sessi
 
 @app.route('/')
 def index():
-    # Check if local OCR is available
+    # Check if local OCR is available and get current model
     local_ocr_available = False
+    local_ocr_current_model = None
     try:
         import requests
-        response = requests.get(f"{LOCAL_OCR_URL}/health", timeout=2)
-        local_ocr_available = response.status_code == 200
+        response = requests.get(f"{LOCAL_OCR_URL}/status", timeout=2)
+        if response.status_code == 200:
+            local_ocr_available = True
+            status_data = response.json()
+            local_ocr_current_model = status_data.get('current_model')
     except:
         pass
 
@@ -517,6 +526,8 @@ def index():
         ocr_backend=OCR_BACKEND,
         local_ocr_available=local_ocr_available,
         local_ocr_auto_start=LOCAL_OCR_AUTO_START,
+        local_ocr_model=LOCAL_OCR_MODEL,
+        local_ocr_current_model=local_ocr_current_model,
         has_mistral_key=bool(os.getenv("MISTRAL_API_KEY")),
     )
 
@@ -528,8 +539,9 @@ def handle_process():
     files = request.files.getlist('pdf_files')
 
     # Get OCR backend configuration
-    # Allow form override of backend type
+    # Allow form override of backend type and local model
     backend_type = request.form.get('ocr_backend', OCR_BACKEND)
+    local_model = request.form.get('local_model', LOCAL_OCR_MODEL)
     env_api_key = os.getenv("MISTRAL_API_KEY")
     form_api_key = request.form.get('api_key')
     api_key_to_use = env_api_key or form_api_key
@@ -540,6 +552,7 @@ def handle_process():
             backend_type=backend_type,
             mistral_api_key=api_key_to_use,
             local_server_url=LOCAL_OCR_URL,
+            local_model=local_model,
             container_name=LOCAL_OCR_CONTAINER_NAME,
             docker_image=LOCAL_OCR_DOCKER_IMAGE,
             idle_timeout=LOCAL_OCR_IDLE_TIMEOUT,
