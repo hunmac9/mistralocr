@@ -41,13 +41,17 @@ services:
 
   # PaddleOCR-VL via vLLM (official deployment method)
   local-ocr:
-    image: vllm/vllm-openai:latest
+    image: vllm/vllm-openai:v0.6.6.post1
     environment:
       HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
+      # Disable multiprocessing which can fail on Windows/WSL2
+      VLLM_WORKER_MULTIPROC_METHOD: spawn
     volumes:
       - vllm-cache:/root/.cache
     networks:
       - ocr-network
+    # Required for GPU memory access in container
+    ipc: host
     # GPU passthrough configuration
     deploy:
       resources:
@@ -60,15 +64,16 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 300s
-    # vLLM server command
+      retries: 5
+      start_period: 600s
+    # vLLM server command - optimized for Windows/WSL2
     command: >
       --model PaddlePaddle/PaddleOCR-VL
       --trust-remote-code
-      --max-num-batched-tokens 16384
-      --no-enable-prefix-caching
       --dtype bfloat16
+      --enforce-eager
+      --max-model-len 4096
+      --gpu-memory-utilization 0.80
       --host 0.0.0.0
       --port 8000
 
