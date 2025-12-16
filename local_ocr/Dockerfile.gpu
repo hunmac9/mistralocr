@@ -1,7 +1,7 @@
 # Dockerfile for PaddleOCR-VL local OCR service (GPU/CUDA version)
 # Requires NVIDIA Container Toolkit
 
-FROM nvidia/cuda:12.1-runtime-ubuntu22.04
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
 
 # Prevent Python from writing pyc files and buffer output
 ENV PYTHONDONTWRITEBYTECODE=1
