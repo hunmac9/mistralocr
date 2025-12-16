@@ -19,8 +19,9 @@ import tempfile
 from pathlib import Path
 from uuid import uuid4
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from PIL import Image
+import json
 import fitz  # PyMuPDF for PDF handling
 import torch
 from transformers import AutoModelForCausalLM, AutoProcessor
@@ -342,6 +343,124 @@ def ocr():
             tmp_path.unlink()
         except:
             pass
+
+
+@app.route('/ocr/stream', methods=['POST'])
+def ocr_stream():
+    """
+    Process a PDF or image file with OCR, streaming progress updates.
+
+    Uses newline-delimited JSON (NDJSON) to stream progress and results.
+
+    Progress messages:
+    - {"type": "status", "message": "..."}
+    - {"type": "progress", "page": 1, "total": 10, "message": "Processing page 1/10"}
+    - {"type": "result", "pages": [...], "model": "...", "processing_time": ...}
+    - {"type": "error", "message": "..."}
+    """
+    if 'file' not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+
+    task = request.form.get('task', 'ocr')
+    include_images = request.form.get('include_images', 'true').lower() == 'true'
+
+    # Save file temporarily
+    suffix = Path(file.filename).suffix.lower()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        file.save(tmp.name)
+        tmp_path = Path(tmp.name)
+
+    def generate():
+        try:
+            start_time = time.time()
+
+            # Send initial status
+            yield json.dumps({"type": "status", "message": "Loading file"}) + "\n"
+
+            # Convert PDF to images or load image directly
+            if suffix == '.pdf':
+                print(f"Processing PDF: {file.filename}")
+                yield json.dumps({"type": "status", "message": "Converting PDF to images"}) + "\n"
+                images = pdf_to_images(tmp_path)
+            elif suffix in ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tiff']:
+                print(f"Processing image: {file.filename}")
+                images = [Image.open(tmp_path).convert('RGB')]
+            else:
+                yield json.dumps({"type": "error", "message": f"Unsupported file type: {suffix}"}) + "\n"
+                return
+
+            total_pages = len(images)
+            yield json.dumps({"type": "status", "message": f"Found {total_pages} pages"}) + "\n"
+
+            # Check if model is loaded, report loading status
+            if model is None:
+                yield json.dumps({"type": "status", "message": "Loading OCR model"}) + "\n"
+
+            # Process each page/image
+            pages = []
+            for page_idx, img in enumerate(images):
+                page_num = page_idx + 1
+                print(f"  Processing page {page_num}/{total_pages}...")
+
+                # Send progress update
+                yield json.dumps({
+                    "type": "progress",
+                    "page": page_num,
+                    "total": total_pages,
+                    "message": f"Processing page {page_num}/{total_pages}"
+                }) + "\n"
+
+                # Run OCR on the page
+                markdown_content = process_image(img, task)
+
+                # Prepare page response
+                page_data = {
+                    "index": page_idx,
+                    "markdown": markdown_content,
+                    "images": []
+                }
+
+                # Include the page image if requested
+                if include_images:
+                    img_id = f"page_{page_num}_img"
+                    img_base64 = image_to_base64(img.convert('RGB'), "PNG")
+                    page_data["images"].append({
+                        "id": img_id,
+                        "image_base64": f"data:image/png;base64,{img_base64}"
+                    })
+                    # Add image reference to markdown if not already present
+                    if f"![" not in page_data["markdown"]:
+                        page_data["markdown"] = f"![{img_id}]({img_id})\n\n{page_data['markdown']}"
+
+                pages.append(page_data)
+
+            processing_time = time.time() - start_time
+            print(f"OCR completed in {processing_time:.2f} seconds for {len(pages)} pages")
+
+            # Send final result
+            yield json.dumps({
+                "type": "result",
+                "pages": pages,
+                "model": MODEL_PATH,
+                "processing_time": processing_time
+            }) + "\n"
+
+        except Exception as e:
+            print(f"Error processing file: {e}")
+            yield json.dumps({"type": "error", "message": str(e)}) + "\n"
+
+        finally:
+            # Clean up temp file
+            try:
+                tmp_path.unlink()
+            except:
+                pass
+
+    return Response(generate(), mimetype='application/x-ndjson')
 
 
 @app.route('/ocr/image', methods=['POST'])

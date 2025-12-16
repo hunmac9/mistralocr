@@ -22,9 +22,12 @@ import threading
 from pathlib import Path
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Callable
 
 import requests
+
+# Type alias for progress callback: (message: str) -> None
+ProgressCallback = Optional[Callable[[str], None]]
 from PIL import Image
 import io
 
@@ -56,17 +59,26 @@ class OCRBackend(ABC):
     """Abstract base class for OCR backends."""
 
     @abstractmethod
-    def process(self, pdf_path: Path) -> OCRResponse:
+    def process(self, pdf_path: Path, on_progress: ProgressCallback = None) -> OCRResponse:
         """
         Process a PDF file and return OCR results.
 
         Args:
             pdf_path: Path to the PDF file to process
+            on_progress: Optional callback function called with progress messages
 
         Returns:
             OCRResponse with extracted text and images
         """
         pass
+
+    def _report(self, on_progress: ProgressCallback, message: str):
+        """Helper to safely call progress callback."""
+        if on_progress:
+            try:
+                on_progress(message)
+            except Exception:
+                pass  # Don't let callback errors break processing
 
     @abstractmethod
     def is_available(self) -> bool:
@@ -99,13 +111,14 @@ class MistralOCRBackend(OCRBackend):
     def get_name(self) -> str:
         return "Mistral OCR"
 
-    def process(self, pdf_path: Path) -> OCRResponse:
+    def process(self, pdf_path: Path, on_progress: ProgressCallback = None) -> OCRResponse:
         from mistralai import DocumentURLChunk
 
         client = self._get_client()
         uploaded_file_id = None
 
         try:
+            self._report(on_progress, "Uploading to Mistral")
             print(f"  [Mistral] Uploading {pdf_path.name}...")
             with open(pdf_path, "rb") as f:
                 pdf_bytes = f.read()
@@ -116,9 +129,11 @@ class MistralOCRBackend(OCRBackend):
             )
             uploaded_file_id = mistral_file.id
 
+            self._report(on_progress, "Preparing document")
             print(f"  [Mistral] File uploaded (ID: {uploaded_file_id}). Getting signed URL...")
             signed_url = client.files.get_signed_url(file_id=uploaded_file_id, expiry=300)
 
+            self._report(on_progress, "Running Mistral OCR")
             print(f"  [Mistral] Calling OCR API...")
             start_time = time.time()
             ocr_result = client.ocr.process(
@@ -128,6 +143,7 @@ class MistralOCRBackend(OCRBackend):
             )
             processing_time = time.time() - start_time
             print(f"  [Mistral] OCR complete in {processing_time:.2f}s")
+            self._report(on_progress, f"OCR complete ({processing_time:.1f}s)")
 
             # Convert to our standard format
             pages = []
@@ -294,12 +310,13 @@ class LocalOCRBackend(OCRBackend):
         except Exception as e:
             print(f"  [Local OCR] Error stopping container: {e}")
 
-    def process(self, pdf_path: Path) -> OCRResponse:
-        """Process a PDF using the local OCR server."""
+    def process(self, pdf_path: Path, on_progress: ProgressCallback = None) -> OCRResponse:
+        """Process a PDF using the local OCR server with streaming progress."""
 
         # Ensure server is running
         if not self.is_available():
             if self.auto_start:
+                self._report(on_progress, "Starting OCR server")
                 if not self._start_container():
                     raise RuntimeError("Failed to start local OCR container")
                 # Wait a bit more for model to potentially load
@@ -308,29 +325,61 @@ class LocalOCRBackend(OCRBackend):
             else:
                 raise RuntimeError("Local OCR server is not available")
 
+        self._report(on_progress, "Sending to OCR server")
         print(f"  [Local OCR] Processing {pdf_path.name}...")
         start_time = time.time()
 
         try:
-            # Send file to local OCR server
+            # Use streaming endpoint for progress updates
             with open(pdf_path, 'rb') as f:
                 files = {'file': (pdf_path.name, f, 'application/pdf')}
                 data = {'task': 'ocr', 'include_images': 'true'}
 
                 response = requests.post(
-                    f"{self.server_url}/ocr",
+                    f"{self.server_url}/ocr/stream",
                     files=files,
                     data=data,
-                    timeout=600  # 10 minute timeout for large files
+                    timeout=600,  # 10 minute timeout for large files
+                    stream=True  # Enable streaming
                 )
 
             if response.status_code != 200:
-                error_msg = response.json().get('error', 'Unknown error')
+                try:
+                    error_msg = response.json().get('error', 'Unknown error')
+                except:
+                    error_msg = f"HTTP {response.status_code}"
                 raise RuntimeError(f"OCR server error: {error_msg}")
 
-            result = response.json()
+            # Process streaming response (NDJSON)
+            result = None
+            for line in response.iter_lines():
+                if line:
+                    try:
+                        msg = json.loads(line.decode('utf-8'))
+                        msg_type = msg.get('type')
+
+                        if msg_type == 'status':
+                            self._report(on_progress, msg.get('message', ''))
+                        elif msg_type == 'progress':
+                            page = msg.get('page', 0)
+                            total = msg.get('total', 0)
+                            self._report(on_progress, f"Page {page}/{total}")
+                        elif msg_type == 'result':
+                            result = msg
+                        elif msg_type == 'error':
+                            raise RuntimeError(msg.get('message', 'OCR error'))
+                    except json.JSONDecodeError:
+                        continue  # Skip malformed lines
+
+            if result is None:
+                raise RuntimeError("No result received from OCR server")
+
             processing_time = time.time() - start_time
             print(f"  [Local OCR] OCR complete in {processing_time:.2f}s")
+
+            # Report completion
+            page_count = len(result.get('pages', []))
+            self._report(on_progress, f"Completed {page_count} pages")
 
             # Convert to our standard format
             pages = []

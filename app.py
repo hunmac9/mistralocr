@@ -159,7 +159,7 @@ def split_pdf(pdf_path: Path, max_size_mb: int) -> list[Path]:
 
 # --- Core Processing Logic ---
 
-def process_pdf(pdf_path: Path, ocr_backend: OCRBackend, session_output_dir: Path) -> tuple[str, str, list[str], Path, Path]:
+def process_pdf(pdf_path: Path, ocr_backend: OCRBackend, session_output_dir: Path, on_progress=None) -> tuple[str, str, list[str], Path, Path]:
     """
     Processes a single PDF file using the specified OCR backend and saves results.
 
@@ -167,6 +167,7 @@ def process_pdf(pdf_path: Path, ocr_backend: OCRBackend, session_output_dir: Pat
         pdf_path: Path to the PDF file to process
         ocr_backend: OCR backend instance to use for processing
         session_output_dir: Directory to save output files
+        on_progress: Optional callback for progress updates
 
     Returns:
         A tuple (pdf_base_name, final_markdown_content, list_of_image_filenames, path_to_markdown_file, path_to_images_dir)
@@ -186,7 +187,7 @@ def process_pdf(pdf_path: Path, ocr_backend: OCRBackend, session_output_dir: Pat
 
         # Use the OCR backend to process the PDF
         start_time = time.time()
-        ocr_response = ocr_backend.process(pdf_path)
+        ocr_response = ocr_backend.process(pdf_path, on_progress=on_progress)
         end_time = time.time()
         print(f"  OCR processing complete for {pdf_path.name} in {end_time - start_time:.2f} seconds.")
 
@@ -356,6 +357,10 @@ def _publish_status(job_id, status, data=None, message=None):
 
 # --- Background worker function ---
 def background_process_job(job_id, temp_pdf_path, ocr_backend: OCRBackend, session_id):
+    # Create a progress callback that publishes status updates
+    def progress_callback(message):
+        _publish_status(job_id, 'processing', message=message)
+
     _publish_status(job_id, 'processing', message='Initializing')
     try:
         session_upload_dir = UPLOAD_FOLDER / session_id
@@ -387,7 +392,7 @@ def background_process_job(job_id, temp_pdf_path, ocr_backend: OCRBackend, sessi
                 _publish_status(job_id, 'processing', message=f'Processing part {idx}/{len(split_files)}')
                 print(f"Processing split part {idx}: {split_file.name}")
                 part_base, md_content, img_files, md_path, img_dir = process_pdf(
-                    split_file, ocr_backend, session_output_dir
+                    split_file, ocr_backend, session_output_dir, on_progress=progress_callback
                 )
                 # Adjust image references in markdown
                 for img_file in img_files:
@@ -431,11 +436,9 @@ def background_process_job(job_id, temp_pdf_path, ocr_backend: OCRBackend, sessi
 
         else:
             # Process normally
-            _publish_status(job_id, 'processing', message='Running OCR')
             processed_pdf_base, markdown_content, image_filenames, md_path, img_dir = process_pdf(
-                temp_pdf_path, ocr_backend, session_output_dir
+                temp_pdf_path, ocr_backend, session_output_dir, on_progress=progress_callback
             )
-            _publish_status(job_id, 'processing', message=f'Extracted {len(image_filenames)} images')
             # Move markdown and images into final_output_dir if not already there
             if img_dir != final_output_dir:
                 for img_file in image_filenames:
