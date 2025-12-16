@@ -196,11 +196,12 @@ def process_image(image: Image.Image, task: str = "ocr") -> str:
 
     prompt = PROMPTS.get(task, PROMPTS["ocr"])
 
-    messages = [
+    # Build conversation for chat template
+    conversation = [
         {
             "role": "user",
             "content": [
-                {"type": "image", "image": image},
+                {"type": "image"},
                 {"type": "text", "text": prompt},
             ]
         }
@@ -209,37 +210,53 @@ def process_image(image: Image.Image, task: str = "ocr") -> str:
     with model_lock:
         print(f"    [OCR] Preparing inputs...")
         prep_start = time.time()
-        inputs = processor.apply_chat_template(
-            messages,
-            tokenize=True,
+
+        # Apply chat template to get the text prompt
+        text_prompt = processor.apply_chat_template(
+            conversation,
             add_generation_prompt=True,
-            return_dict=True,
-            return_tensors="pt"
+            tokenize=False
+        )
+
+        # Process image and text together using the processor's __call__ method
+        inputs = processor(
+            text=[text_prompt],
+            images=[image],
+            return_tensors="pt",
+            padding=True
         ).to(DEVICE)
+
         print(f"    [OCR] Inputs prepared in {time.time() - prep_start:.2f}s")
         print(f"    [OCR] Input keys: {list(inputs.keys())}")
 
         print(f"    [OCR] Starting inference (this may take several minutes on CPU)...")
         gen_start = time.time()
+
         with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
+            # Generate with explicit parameters
+            generated_ids = model.generate(
+                input_ids=inputs.input_ids,
+                attention_mask=inputs.attention_mask,
+                pixel_values=inputs.get("pixel_values"),
+                image_grid_thw=inputs.get("image_grid_thw"),
                 max_new_tokens=1024,
                 do_sample=False,
                 use_cache=True
             )
+
         print(f"    [OCR] Inference completed in {time.time() - gen_start:.2f}s")
 
-        result = processor.batch_decode(outputs, skip_special_tokens=True)[0]
+        # Trim the input tokens from the output
+        generated_ids_trimmed = [
+            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+        ]
+        result = processor.batch_decode(
+            generated_ids_trimmed,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False
+        )[0]
 
-    # Extract the actual response (after the prompt)
-    if "assistant" in result.lower():
-        # Try to find where the assistant response starts
-        parts = result.split("assistant")
-        if len(parts) > 1:
-            result = parts[-1].strip()
-
-    return result
+    return result.strip()
 
 
 def pdf_to_images(pdf_path: Path, dpi: int = 200) -> list[Image.Image]:
