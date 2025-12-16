@@ -27,7 +27,8 @@ A web application using Flask to convert PDF files into standard Markdown docume
 ### Prerequisites
 
 -   [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](https://docs.docker.com/compose/install/) installed
--   8GB+ RAM recommended for local OCR (uses ~4-6GB when model is loaded)
+-   **CPU Mode:** 8GB+ RAM recommended (uses ~4-6GB when model is loaded)
+-   **GPU Mode (Optional):** NVIDIA GPU with 6GB+ VRAM, CUDA support, and [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
 -   (Optional) A Mistral AI API Key from [console.mistral.ai/api-keys](https://console.mistral.ai/api-keys) if you want to use cloud OCR
 
 ### Running the App
@@ -51,8 +52,14 @@ A web application using Flask to convert PDF files into standard Markdown docume
 
 3. **Launch with Docker Compose:**
 
+    **CPU Mode (default):**
     ```bash
     docker compose up --build -d
+    ```
+
+    **GPU Mode (NVIDIA):**
+    ```bash
+    docker compose -f docker-compose.gpu.yml up --build -d
     ```
 
     * `--build`: Rebuilds the images if needed
@@ -114,13 +121,49 @@ All configuration is done via environment variables in the `.env` file:
 
 ### Memory Management
 
-The local OCR model (PaddleOCR-VL-0.9B) uses approximately 4-6GB of RAM when loaded. To minimize resource usage:
+The local OCR model (PaddleOCR-VL-0.9B) uses approximately 4-6GB of RAM/VRAM when loaded. To minimize resource usage:
 
 - The model is **only loaded when needed** (lazy loading)
 - After processing, the model **automatically unloads** after the idle timeout (default: 5 minutes)
 - When unloaded, the service uses minimal memory (~100MB)
 
 You can adjust the idle timeout via `LOCAL_OCR_IDLE_TIMEOUT` environment variable.
+
+## GPU Acceleration
+
+GPU mode provides **10-50x faster** OCR processing compared to CPU.
+
+### Requirements
+
+**Linux:**
+1. NVIDIA GPU with CUDA support (6GB+ VRAM recommended)
+2. NVIDIA drivers installed
+3. [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) installed
+
+**Windows (Docker Desktop):**
+1. NVIDIA GPU with CUDA support
+2. NVIDIA drivers installed in Windows
+3. Docker Desktop with WSL2 backend enabled
+4. GPU support enabled in Docker Desktop settings
+
+### Usage
+
+```bash
+# Build and run with GPU support
+docker compose -f docker-compose.gpu.yml up --build -d
+
+# Check GPU is detected
+docker compose -f docker-compose.gpu.yml logs local-ocr | grep "Using device"
+# Should show: Using device: cuda (NVIDIA GeForce RTX XXXX, X.XGB VRAM)
+```
+
+### GPU Memory Management
+
+When using GPU mode:
+- Model uses ~2-3GB VRAM (bfloat16 precision)
+- VRAM is **automatically freed** after the idle timeout
+- Logs show VRAM usage before/after loading and unloading
+- Falls back to CPU if GPU is not available
 
 ## Architecture
 

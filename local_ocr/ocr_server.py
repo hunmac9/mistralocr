@@ -41,9 +41,21 @@ model_lock = threading.Lock()
 last_activity_time = time.time()
 unload_timer = None
 
-# Device selection - CPU for low-resource machines
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using device: {DEVICE}")
+# Device selection
+FORCE_CUDA = os.getenv("FORCE_CUDA", "false").lower() == "true"
+if FORCE_CUDA and torch.cuda.is_available():
+    DEVICE = "cuda"
+    GPU_NAME = torch.cuda.get_device_name(0)
+    GPU_MEMORY = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+    print(f"Using device: {DEVICE} ({GPU_NAME}, {GPU_MEMORY:.1f}GB VRAM)")
+elif torch.cuda.is_available():
+    DEVICE = "cuda"
+    GPU_NAME = torch.cuda.get_device_name(0)
+    GPU_MEMORY = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+    print(f"Using device: {DEVICE} ({GPU_NAME}, {GPU_MEMORY:.1f}GB VRAM)")
+else:
+    DEVICE = "cpu"
+    print(f"Using device: {DEVICE} (GPU not available)")
 
 # Prompts for different OCR tasks
 PROMPTS = {
@@ -67,8 +79,14 @@ def load_model():
         start_time = time.time()
 
         try:
-            # Use float32 for CPU, bfloat16 for GPU
+            # Use bfloat16 for GPU (memory efficient), float32 for CPU
             dtype = torch.bfloat16 if DEVICE == "cuda" else torch.float32
+
+            # Log memory before loading
+            if DEVICE == "cuda":
+                torch.cuda.reset_peak_memory_stats()
+                mem_before = torch.cuda.memory_allocated() / (1024**3)
+                print(f"  GPU memory before loading: {mem_before:.2f}GB")
 
             model = AutoModelForCausalLM.from_pretrained(
                 MODEL_PATH,
@@ -80,6 +98,13 @@ def load_model():
             processor = AutoProcessor.from_pretrained(MODEL_PATH, trust_remote_code=True)
 
             load_time = time.time() - start_time
+
+            # Log memory after loading
+            if DEVICE == "cuda":
+                mem_after = torch.cuda.memory_allocated() / (1024**3)
+                mem_peak = torch.cuda.max_memory_allocated() / (1024**3)
+                print(f"  GPU memory after loading: {mem_after:.2f}GB (peak: {mem_peak:.2f}GB)")
+
             print(f"Model loaded successfully in {load_time:.2f} seconds")
             return True
 
@@ -99,7 +124,17 @@ def unload_model():
             print("Model already unloaded")
             return
 
-        print("Unloading model to free memory...")
+        # Log memory before unloading (GPU)
+        if DEVICE == "cuda":
+            mem_before = torch.cuda.memory_allocated() / (1024**3)
+            print(f"Unloading model to free VRAM (currently using {mem_before:.2f}GB)...")
+        else:
+            print("Unloading model to free memory...")
+
+        # Move model to CPU first to free GPU memory immediately
+        if DEVICE == "cuda" and model is not None:
+            model.to("cpu")
+
         del model
         del processor
         model = None
@@ -107,10 +142,15 @@ def unload_model():
 
         # Force garbage collection
         gc.collect()
+
+        # Clear GPU memory
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-
-        print("Model unloaded successfully")
+            torch.cuda.synchronize()
+            mem_after = torch.cuda.memory_allocated() / (1024**3)
+            print(f"Model unloaded successfully (GPU memory now: {mem_after:.2f}GB)")
+        else:
+            print("Model unloaded successfully")
 
 
 def reset_idle_timer():

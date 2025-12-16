@@ -1,0 +1,78 @@
+# Docker Compose for GPU-enabled deployment
+# Use with: docker compose -f docker-compose.gpu.yml up -d --build
+#
+# Requirements:
+# - NVIDIA GPU with CUDA support
+# - NVIDIA Container Toolkit installed
+#   - Linux: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+#   - Windows (Docker Desktop): Enable WSL2 backend, install NVIDIA drivers in Windows
+#     https://docs.docker.com/desktop/gpu/
+#
+# This configuration will:
+# - Use GPU for inference (much faster than CPU)
+# - Automatically unload model after idle timeout to free VRAM
+# - Fall back to CPU if GPU is not available
+
+services:
+  # Main application service
+  app:
+    build: .
+    ports:
+      - "${FLASK_PORT:-5009}:${FLASK_PORT:-5009}"
+    environment:
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      FLASK_PORT: ${FLASK_PORT:-5009}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-100}
+      MISTRAL_MAX_MB: ${MISTRAL_MAX_MB:-50}
+      SERVER_NAME: ${SERVER_NAME:-localhost:${FLASK_PORT:-5009}}
+      FLASK_DEBUG: ${FLASK_DEBUG:-False}
+      OCR_BACKEND: ${OCR_BACKEND:-auto}
+      LOCAL_OCR_URL: http://local-ocr:8000
+      LOCAL_OCR_IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
+      LOCAL_OCR_AUTO_START: "false"
+    depends_on:
+      local-ocr:
+        condition: service_healthy
+    networks:
+      - ocr-network
+    command: ["gunicorn", "--bind", "0.0.0.0:${FLASK_PORT:-5009}", "--timeout", "300", "app:app"]
+
+  # Local OCR service with GPU support
+  local-ocr:
+    build:
+      context: ./local_ocr
+      dockerfile: Dockerfile
+      args:
+        USE_GPU: "true"
+    environment:
+      IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
+      PORT: 8000
+      HOST: 0.0.0.0
+      MODEL_PATH: PaddlePaddle/PaddleOCR-VL
+      # Force CUDA device (will fall back to CPU if unavailable)
+      FORCE_CUDA: "true"
+    volumes:
+      - paddleocr-cache:/home/appuser/.cache
+    networks:
+      - ocr-network
+    # GPU passthrough configuration
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+networks:
+  ocr-network:
+    driver: bridge
+
+volumes:
+  paddleocr-cache:
