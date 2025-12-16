@@ -690,7 +690,12 @@ def download_file(session_id, filename):
         return "File not found", 404
 
     print(f"Serving ZIP for download: {file_path}")
-    return send_from_directory(directory, safe_filename, as_attachment=True)
+    return send_from_directory(
+        directory,
+        safe_filename,
+        as_attachment=True,
+        mimetype='application/zip'
+    )
 
 @app.route('/job/<job_id>')
 def job_status(job_id):
