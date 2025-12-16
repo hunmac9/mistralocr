@@ -1,29 +1,60 @@
-# PaddleOCR-VL with vLLM - GPU Required
-# Uses the official PaddlePaddle vLLM server image
+# Dockerfile for Local OCR service with GPU support
+# Supports: Surya OCR, Chandra OCR (PaddleOCR-VL not recommended)
 
-FROM vllm/vllm-openai:latest
+FROM nvidia/cuda:12.1-runtime-ubuntu22.04
 
-# Set environment variables
-ENV MODEL_NAME=PaddlePaddle/PaddleOCR-VL
-ENV HOST=0.0.0.0
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Install Python and system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-venv \
+    python3-pip \
+    libmupdf-dev \
+    mupdf-tools \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python
+
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install PyTorch with CUDA support first
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu121
+
+# Install other dependencies (skip CPU torch from requirements)
+RUN grep -v "torch==" requirements.txt | grep -v "torchvision==" | pip install --no-cache-dir -r /dev/stdin
+
+# Copy application
+COPY ocr_server.py .
+
+# Setup directories and permissions
+RUN mkdir -p /home/appuser/.cache && chown -R appuser:appgroup /home/appuser /app
+
+USER appuser
+
+# Environment
 ENV PORT=8000
+ENV HOST=0.0.0.0
+ENV IDLE_TIMEOUT=300
+ENV DEFAULT_MODEL=surya
+ENV FORCE_CUDA=true
+ENV HF_HOME=/home/appuser/.cache/huggingface
+ENV TRANSFORMERS_CACHE=/home/appuser/.cache/huggingface
 
-# Create cache directory
-RUN mkdir -p /root/.cache/huggingface
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
-
-# Expose port
 EXPOSE 8000
 
-# Run vLLM server with PaddleOCR-VL
-CMD ["python", "-m", "vllm.entrypoints.openai.api_server", \
-     "--model", "PaddlePaddle/PaddleOCR-VL", \
-     "--trust-remote-code", \
-     "--max-num-batched-tokens", "16384", \
-     "--no-enable-prefix-caching", \
-     "--dtype", "bfloat16", \
-     "--host", "0.0.0.0", \
-     "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--timeout", "600", "--workers", "1", "ocr_server:app"]

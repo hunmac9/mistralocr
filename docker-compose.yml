@@ -43,21 +43,25 @@ services:
     # Override the default CMD:
     command: ["gunicorn", "--bind", "0.0.0.0:${FLASK_PORT:-5009}", "--timeout", "300", "app:app"]
 
-  # Local OCR service using PaddleOCR-VL
+  # Local OCR service - Surya OCR (CPU-friendly, ~300M params)
+  # For GPU, use docker-compose.gpu.yml instead
   local-ocr:
     build:
       context: ./local_ocr
       dockerfile: Dockerfile
     environment:
+      # Default model: surya (CPU-friendly), paddle (GPU recommended), chandra (GPU required)
+      DEFAULT_MODEL: ${LOCAL_OCR_MODEL:-surya}
       # Idle timeout in seconds (model unloads after this period of inactivity)
       IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
       PORT: 8000
       HOST: 0.0.0.0
-      # Model path (from Hugging Face Hub)
-      MODEL_PATH: PaddlePaddle/PaddleOCR-VL
+      # Model paths for PaddleOCR-VL and Chandra (Surya uses built-in paths)
+      PADDLE_MODEL_PATH: PaddlePaddle/PaddleOCR-VL
+      CHANDRA_MODEL_PATH: datalab-to/chandra
     volumes:
       # Persist model cache to avoid re-downloading
-      - paddleocr-cache:/home/appuser/.cache
+      - ocr-model-cache:/home/appuser/.cache
     networks:
       - ocr-network
     # Resource limits for CPU-only deployment
@@ -80,4 +84,4 @@ networks:
 
 volumes:
   # Named volume for persistent model cache
-  paddleocr-cache:
+  ocr-model-cache:

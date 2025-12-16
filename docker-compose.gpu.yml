@@ -1,17 +1,14 @@
-# Docker Compose for GPU-enabled deployment using vLLM
+# Docker Compose for GPU-enabled deployment
 # Use with: docker compose -f docker-compose.gpu.yml up -d --build
 #
 # Requirements:
-# - NVIDIA GPU with CUDA support (6GB+ VRAM recommended)
+# - NVIDIA GPU with CUDA support (8GB+ VRAM recommended for Chandra)
 # - NVIDIA Container Toolkit installed
-#   - Linux: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
-#   - Windows (Docker Desktop): Enable WSL2 backend, install NVIDIA drivers in Windows
-#     https://docs.docker.com/desktop/gpu/
 #
-# This configuration:
-# - Uses vLLM for PaddleOCR-VL (official recommended deployment)
-# - Exposes OpenAI-compatible API at port 8000
-# - GPU required for vLLM
+# Available models:
+# - surya: Surya OCR (~300M params) - Works on CPU or GPU, fast
+# - chandra: Chandra OCR (9B params) - GPU required, best quality
+# - paddle: PaddleOCR-VL - Not recommended (vLLM unsupported, transformers issues)
 
 services:
   # Main application service
@@ -28,10 +25,9 @@ services:
       FLASK_DEBUG: ${FLASK_DEBUG:-False}
       OCR_BACKEND: ${OCR_BACKEND:-auto}
       LOCAL_OCR_URL: http://local-ocr:8000
+      LOCAL_OCR_MODEL: ${LOCAL_OCR_MODEL:-surya}
       LOCAL_OCR_IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
       LOCAL_OCR_AUTO_START: "false"
-      # Use vLLM mode for GPU
-      LOCAL_OCR_USE_VLLM: "true"
     depends_on:
       local-ocr:
         condition: service_healthy
@@ -39,18 +35,20 @@ services:
       - ocr-network
     command: ["gunicorn", "--bind", "0.0.0.0:${FLASK_PORT:-5009}", "--timeout", "600", "app:app"]
 
-  # PaddleOCR-VL via vLLM (official deployment method)
+  # Local OCR server with GPU support
   local-ocr:
-    image: vllm/vllm-openai:v0.6.6.post1
+    build:
+      context: ./local_ocr
+      dockerfile: Dockerfile.gpu
     environment:
-      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
-      # Disable multiprocessing which can fail on Windows/WSL2
-      VLLM_WORKER_MULTIPROC_METHOD: spawn
+      DEFAULT_MODEL: ${LOCAL_OCR_MODEL:-surya}
+      IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
+      FORCE_CUDA: "true"
     volumes:
-      - vllm-cache:/root/.cache
+      - ocr-cache:/home/appuser/.cache
     networks:
       - ocr-network
-    # Required for GPU memory access in container
+    # Required for GPU memory access
     ipc: host
     # GPU passthrough configuration
     deploy:
@@ -61,25 +59,15 @@ services:
               count: 1
               capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 600s
-    # vLLM server command - optimized for Windows/WSL2
-    command: >
-      --model PaddlePaddle/PaddleOCR-VL
-      --trust-remote-code
-      --dtype bfloat16
-      --enforce-eager
-      --max-model-len 4096
-      --gpu-memory-utilization 0.80
-      --host 0.0.0.0
-      --port 8000
+      start_period: 120s
 
 networks:
   ocr-network:
     driver: bridge
 
 volumes:
-  vllm-cache:
+  ocr-cache:

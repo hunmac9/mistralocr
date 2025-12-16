@@ -5,9 +5,10 @@
 """
 Local OCR Server supporting multiple OCR models.
 
-This server provides a REST API for OCR processing using either:
-- PaddleOCR-VL-0.9B model
-- Chandra OCR model (datalab-to/chandra)
+This server provides a REST API for OCR processing using:
+- Surya OCR (~300M params) - CPU-friendly, recommended for CPU-only deployment
+- PaddleOCR-VL-0.9B model - GPU recommended (transformers API has issues)
+- Chandra OCR model (9B params) - GPU required
 
 It implements lazy loading and automatic unloading to minimize memory usage when idle.
 Models are mutually exclusive - only one can be loaded at a time.
@@ -32,7 +33,8 @@ import torch
 app = Flask(__name__)
 
 # --- Configuration ---
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "paddle")  # "paddle" or "chandra"
+# Model selection: "surya" (CPU-friendly), "paddle" (GPU recommended), "chandra" (GPU required)
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "surya")  # Default to Surya for CPU compatibility
 IDLE_TIMEOUT = int(os.getenv("IDLE_TIMEOUT", "300"))  # 5 minutes default
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "100"))
 app.config['MAX_CONTENT_LENGTH'] = MAX_UPLOAD_MB * 1024 * 1024
@@ -40,11 +42,13 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_UPLOAD_MB * 1024 * 1024
 # Model paths
 PADDLE_MODEL_PATH = os.getenv("PADDLE_MODEL_PATH", "PaddlePaddle/PaddleOCR-VL")
 CHANDRA_MODEL_PATH = os.getenv("CHANDRA_MODEL_PATH", "datalab-to/chandra")
+# Surya uses built-in model paths from the surya-ocr package
 
 
 class ModelType(Enum):
     PADDLE = "paddle"
     CHANDRA = "chandra"
+    SURYA = "surya"
 
 
 # --- Global Model State ---
@@ -238,6 +242,47 @@ def load_chandra_model():
             return False
 
 
+def load_surya_model():
+    """Load the Surya OCR model into memory (~300M params, CPU-friendly)."""
+    global model, processor, current_model_type
+    from surya.recognition import RecognitionPredictor
+    from surya.detection import DetectionPredictor
+
+    # If another model is loaded, unload it first
+    if current_model_type is not None:
+        unload_model()
+
+    with model_lock:
+        print("Loading Surya OCR model (CPU-friendly, ~300M params)...")
+        start_time = time.time()
+
+        try:
+            # Surya uses separate detection and recognition predictors
+            det_predictor = DetectionPredictor()
+            rec_predictor = RecognitionPredictor()
+
+            # Store both predictors as a dict for easy access
+            model = {
+                "detection": det_predictor,
+                "recognition": rec_predictor
+            }
+            processor = None  # Surya doesn't use a separate processor
+            current_model_type = ModelType.SURYA
+
+            load_time = time.time() - start_time
+            print(f"Surya OCR model loaded successfully in {load_time:.2f} seconds")
+            return True
+
+        except Exception as e:
+            print(f"Error loading Surya OCR model: {e}")
+            import traceback
+            traceback.print_exc()
+            model = None
+            processor = None
+            current_model_type = None
+            return False
+
+
 def load_model(model_type: ModelType = None):
     """Load the specified model (or default if not specified)."""
     if model_type is None:
@@ -247,6 +292,8 @@ def load_model(model_type: ModelType = None):
         return load_paddle_model()
     elif model_type == ModelType.CHANDRA:
         return load_chandra_model()
+    elif model_type == ModelType.SURYA:
+        return load_surya_model()
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 
@@ -371,6 +418,45 @@ def process_image_chandra(image: Image.Image) -> str:
     return markdown.strip()
 
 
+def process_image_surya(image: Image.Image) -> str:
+    """Process a single image with Surya OCR (~300M params, CPU-friendly)."""
+    global model
+
+    reset_idle_timer()
+
+    with model_lock:
+        print(f"    [Surya] Starting inference...")
+        gen_start = time.time()
+
+        det_predictor = model["detection"]
+        rec_predictor = model["recognition"]
+
+        # Run OCR using the recognition predictor with detection
+        # The recognition predictor uses the detection predictor internally
+        predictions = rec_predictor([image], det_predictor=det_predictor)
+
+        # Extract text from predictions
+        # Surya returns a list of OCRResult objects, one per image
+        text_lines = []
+        if predictions and len(predictions) > 0:
+            ocr_result = predictions[0]
+            # OCRResult has text_lines attribute containing recognized text
+            if hasattr(ocr_result, 'text_lines'):
+                for line in ocr_result.text_lines:
+                    if hasattr(line, 'text'):
+                        text_lines.append(line.text)
+            # Fallback: some versions may have different attribute names
+            elif hasattr(ocr_result, 'lines'):
+                for line in ocr_result.lines:
+                    if hasattr(line, 'text'):
+                        text_lines.append(line.text)
+
+        result_text = "\n".join(text_lines)
+        print(f"    [Surya] Inference completed in {time.time() - gen_start:.2f}s")
+
+    return result_text.strip()
+
+
 def process_image(image: Image.Image, task: str = "ocr", model_type: ModelType = None) -> str:
     """Process a single image with OCR using the specified or current model."""
     global model, processor, current_model_type
@@ -392,6 +478,8 @@ def process_image(image: Image.Image, task: str = "ocr", model_type: ModelType =
         return process_image_paddle(image, task)
     elif current_model_type == ModelType.CHANDRA:
         return process_image_chandra(image)
+    elif current_model_type == ModelType.SURYA:
+        return process_image_surya(image)
     else:
         raise RuntimeError(f"Unknown model type: {current_model_type}")
 
@@ -435,7 +523,7 @@ def status():
     return jsonify({
         "model_loaded": model is not None,
         "current_model": current_model_type.value if current_model_type else None,
-        "available_models": ["paddle", "chandra"],
+        "available_models": ["surya", "paddle", "chandra"],
         "default_model": DEFAULT_MODEL,
         "device": DEVICE,
         "idle_timeout": IDLE_TIMEOUT,
@@ -450,15 +538,21 @@ def list_models():
     return jsonify({
         "models": [
             {
+                "id": "surya",
+                "name": "Surya OCR",
+                "description": "Surya OCR (~300M params) - CPU-friendly, recommended for CPU-only deployment",
+                "loaded": current_model_type == ModelType.SURYA
+            },
+            {
                 "id": "paddle",
                 "name": "PaddleOCR-VL",
-                "description": "PaddleOCR-VL-0.9B model for general OCR",
+                "description": "PaddleOCR-VL-0.9B model for general OCR (GPU recommended)",
                 "loaded": current_model_type == ModelType.PADDLE
             },
             {
                 "id": "chandra",
                 "name": "Chandra OCR",
-                "description": "Chandra OCR model with layout preservation",
+                "description": "Chandra OCR (9B params) - layout preservation (GPU required)",
                 "loaded": current_model_type == ModelType.CHANDRA
             }
         ],
@@ -703,7 +797,12 @@ def ocr_stream():
 
             # Check if we need to load/switch models
             if model is None or current_model_type != target_model:
-                model_display = "PaddleOCR-VL" if target_model == ModelType.PADDLE else "Chandra OCR"
+                model_names = {
+                    ModelType.SURYA: "Surya OCR",
+                    ModelType.PADDLE: "PaddleOCR-VL",
+                    ModelType.CHANDRA: "Chandra OCR"
+                }
+                model_display = model_names.get(target_model, target_model.value)
                 yield json.dumps({"type": "status", "message": f"Loading {model_display} model"}) + "\n"
 
             # Process each page/image
@@ -836,7 +935,7 @@ if __name__ == '__main__':
 
     print(f"Starting OCR server on {host}:{port}")
     print(f"Default model: {DEFAULT_MODEL}")
-    print(f"Available models: PaddleOCR-VL ({PADDLE_MODEL_PATH}), Chandra ({CHANDRA_MODEL_PATH})")
+    print(f"Available models: Surya (CPU-friendly), PaddleOCR-VL ({PADDLE_MODEL_PATH}), Chandra ({CHANDRA_MODEL_PATH})")
     print(f"Idle timeout: {IDLE_TIMEOUT} seconds")
     print(f"Device: {DEVICE}")
 
