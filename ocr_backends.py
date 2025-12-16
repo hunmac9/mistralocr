@@ -175,137 +175,14 @@ class MistralOCRBackend(OCRBackend):
                     print(f"  [Mistral] Warning: Could not delete file: {e}")
 
 
-class VLLMOCRBackend(OCRBackend):
-    """
-    OCR backend using vLLM with OpenAI-compatible API.
-
-    This is the official recommended way to deploy PaddleOCR-VL.
-    vLLM handles model loading and provides efficient GPU inference.
-    """
-
-    def __init__(
-        self,
-        server_url: str = "http://localhost:8000",
-        model_name: str = "PaddlePaddle/PaddleOCR-VL",
-    ):
-        self.server_url = server_url.rstrip('/')
-        self.model_name = model_name
-        self._client = None
-
-    def _get_client(self):
-        """Lazy initialize the OpenAI client for vLLM."""
-        if self._client is None:
-            from openai import OpenAI
-            self._client = OpenAI(
-                api_key="EMPTY",  # vLLM doesn't need a real API key
-                base_url=f"{self.server_url}/v1",
-                timeout=600.0
-            )
-        return self._client
-
-    def is_available(self) -> bool:
-        try:
-            response = requests.get(f"{self.server_url}/health", timeout=5)
-            return response.status_code == 200
-        except:
-            return False
-
-    def get_name(self) -> str:
-        return "Local OCR (PaddleOCR-VL via vLLM)"
-
-    def _image_to_base64_url(self, image: Image.Image) -> str:
-        """Convert PIL Image to base64 data URL."""
-        buffer = io.BytesIO()
-        image.save(buffer, format="PNG")
-        b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-        return f"data:image/png;base64,{b64}"
-
-    def _pdf_to_images(self, pdf_path: Path, dpi: int = 200) -> list[Image.Image]:
-        """Convert PDF to list of PIL Images."""
-        import fitz  # PyMuPDF
-        images = []
-        doc = fitz.open(str(pdf_path))
-        for page_num in range(len(doc)):
-            page = doc.load_page(page_num)
-            mat = fitz.Matrix(dpi / 72, dpi / 72)
-            pix = page.get_pixmap(matrix=mat)
-            img_data = pix.tobytes("png")
-            img = Image.open(io.BytesIO(img_data))
-            images.append(img)
-        doc.close()
-        return images
-
-    def process(self, pdf_path: Path, on_progress: ProgressCallback = None) -> OCRResponse:
-        """Process a PDF using vLLM's OpenAI-compatible API."""
-
-        if not self.is_available():
-            raise RuntimeError("vLLM OCR server is not available")
-
-        client = self._get_client()
-
-        self._report(on_progress, "Converting PDF to images")
-        print(f"  [vLLM OCR] Processing {pdf_path.name}...")
-        start_time = time.time()
-
-        # Convert PDF to images
-        images = self._pdf_to_images(pdf_path)
-        total_pages = len(images)
-        self._report(on_progress, f"Found {total_pages} pages")
-
-        pages = []
-        for page_idx, img in enumerate(images):
-            page_num = page_idx + 1
-            self._report(on_progress, f"Page {page_num}/{total_pages}")
-            print(f"  [vLLM OCR] Processing page {page_num}/{total_pages}...")
-
-            # Create message with image
-            image_url = self._image_to_base64_url(img)
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": image_url}},
-                        {"type": "text", "text": "OCR:"}
-                    ]
-                }
-            ]
-
-            # Call vLLM
-            response = client.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                temperature=0.0,
-                max_tokens=4096
-            )
-
-            markdown_content = response.choices[0].message.content
-
-            # Create page with image
-            img_id = f"page_{page_num}_img"
-            pages.append(OCRPage(
-                index=page_idx,
-                markdown=markdown_content,
-                images=[OCRImage(id=img_id, image_base64=image_url)]
-            ))
-
-        processing_time = time.time() - start_time
-        print(f"  [vLLM OCR] OCR complete in {processing_time:.2f}s")
-        self._report(on_progress, f"Completed {total_pages} pages")
-
-        return OCRResponse(
-            pages=pages,
-            model="PaddleOCR-VL (vLLM)",
-            processing_time=processing_time
-        )
-
 
 class LocalOCRBackend(OCRBackend):
     """
     OCR backend using local models via Docker container.
 
     Supports multiple models:
-    - PaddleOCR-VL (paddle): General purpose OCR
-    - Chandra OCR (chandra): Layout-preserving OCR
+    - Surya OCR (surya): CPU-friendly, fast (~300M params)
+    - Chandra OCR (chandra): GPU required, best quality (9B params)
 
     This backend manages the Docker container lifecycle automatically:
     - Starts the container on first use
@@ -322,7 +199,7 @@ class LocalOCRBackend(OCRBackend):
         idle_timeout: int = 300,
         auto_start: bool = True,
         use_docker: bool = True,
-        local_model: str = "paddle",  # "paddle" or "chandra"
+        local_model: str = "surya",  # "surya" or "chandra"
     ):
         self.server_url = server_url.rstrip('/')
         self.container_name = container_name
@@ -345,7 +222,7 @@ class LocalOCRBackend(OCRBackend):
     def get_name(self) -> str:
         if self.local_model == "chandra":
             return "Local OCR (Chandra)"
-        return "Local OCR (PaddleOCR-VL)"
+        return "Local OCR (Surya)"
 
     def _is_container_running(self) -> bool:
         """Check if the Docker container is running."""
@@ -458,7 +335,7 @@ class LocalOCRBackend(OCRBackend):
             else:
                 raise RuntimeError("Local OCR server is not available")
 
-        model_display = "Chandra" if self.local_model == "chandra" else "PaddleOCR"
+        model_display = "Chandra" if self.local_model == "chandra" else "Surya"
         self._report(on_progress, f"Sending to {model_display}")
         print(f"  [Local OCR] Processing {pdf_path.name} with {model_display}...")
         start_time = time.time()
@@ -533,7 +410,7 @@ class LocalOCRBackend(OCRBackend):
 
             return OCRResponse(
                 pages=pages,
-                model=result.get('model', 'PaddleOCR-VL'),
+                model=result.get('model', 'Surya'),
                 processing_time=processing_time
             )
 
@@ -547,8 +424,7 @@ def get_ocr_backend(
     backend_type: str = "auto",
     mistral_api_key: Optional[str] = None,
     local_server_url: str = "http://localhost:8000",
-    local_model: str = "paddle",
-    use_vllm: bool = False,
+    local_model: str = "surya",
     **kwargs
 ) -> OCRBackend:
     """
@@ -558,8 +434,7 @@ def get_ocr_backend(
         backend_type: One of "auto", "local", or "mistral"
         mistral_api_key: API key for Mistral (required if backend_type is "mistral")
         local_server_url: URL of local OCR server
-        local_model: Local model to use ("paddle" or "chandra")
-        use_vllm: Use vLLM backend (recommended for GPU deployment)
+        local_model: Local model to use ("surya" or "chandra")
         **kwargs: Additional arguments passed to backend constructor
 
     Returns:
@@ -575,27 +450,15 @@ def get_ocr_backend(
         return MistralOCRBackend(api_key=mistral_api_key)
 
     elif backend_type == "local":
-        # Use vLLM backend if configured (GPU mode)
-        if use_vllm:
-            print("Using vLLM backend for PaddleOCR-VL (GPU mode)")
-            return VLLMOCRBackend(server_url=local_server_url)
         return LocalOCRBackend(server_url=local_server_url, local_model=local_model, **kwargs)
 
     else:  # auto
-        # Use vLLM backend if configured (GPU mode)
-        if use_vllm:
-            vllm_backend = VLLMOCRBackend(server_url=local_server_url)
-            if vllm_backend.is_available():
-                print("Using vLLM OCR backend (GPU mode)")
-                return vllm_backend
-            print("vLLM not available, trying local backend")
-
         # Try local first (default)
         local_backend = LocalOCRBackend(server_url=local_server_url, local_model=local_model, **kwargs)
 
         # Check if local is available or can be started
         if local_backend.is_available():
-            model_name = "Chandra" if local_model == "chandra" else "PaddleOCR-VL"
+            model_name = "Chandra" if local_model == "chandra" else "Surya"
             print(f"Using local OCR backend with {model_name} (already running)")
             return local_backend
 
