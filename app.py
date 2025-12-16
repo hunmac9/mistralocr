@@ -97,19 +97,16 @@ OCR_BACKEND = os.getenv('OCR_BACKEND', 'auto').lower()
 LOCAL_OCR_URL = os.getenv('LOCAL_OCR_URL', 'http://localhost:8000')
 LOCAL_OCR_IDLE_TIMEOUT = int(os.getenv('LOCAL_OCR_IDLE_TIMEOUT', '300'))
 LOCAL_OCR_AUTO_START = os.getenv('LOCAL_OCR_AUTO_START', 'true').lower() == 'true'
-LOCAL_OCR_DOCKER_IMAGE = os.getenv('LOCAL_OCR_DOCKER_IMAGE', 'mistralocr-paddleocr:latest')
-LOCAL_OCR_CONTAINER_NAME = os.getenv('LOCAL_OCR_CONTAINER_NAME', 'mistralocr-paddleocr')
-# LOCAL_OCR_MODEL: "paddle" (default) or "chandra"
-# - "paddle": Use PaddleOCR-VL model
-# - "chandra": Use Chandra OCR model (datalab-to/chandra)
-LOCAL_OCR_MODEL = os.getenv('LOCAL_OCR_MODEL', 'paddle').lower()
-# LOCAL_OCR_USE_VLLM: Use vLLM backend for GPU deployment (recommended)
-LOCAL_OCR_USE_VLLM = os.getenv('LOCAL_OCR_USE_VLLM', 'false').lower() == 'true'
+LOCAL_OCR_DOCKER_IMAGE = os.getenv('LOCAL_OCR_DOCKER_IMAGE', 'mistralocr-local-ocr:latest')
+LOCAL_OCR_CONTAINER_NAME = os.getenv('LOCAL_OCR_CONTAINER_NAME', 'mistralocr-local-ocr')
+# LOCAL_OCR_MODEL: "surya" (default) or "chandra"
+# - "surya": Surya OCR (~300M params) - CPU-friendly
+# - "chandra": Chandra OCR (9B params) - GPU required
+LOCAL_OCR_MODEL = os.getenv('LOCAL_OCR_MODEL', 'surya').lower()
 
 print(f"OCR Backend: {OCR_BACKEND}")
 print(f"Local OCR URL: {LOCAL_OCR_URL}")
 print(f"Local OCR Model: {LOCAL_OCR_MODEL}")
-print(f"Local OCR Use vLLM: {LOCAL_OCR_USE_VLLM}")
 print(f"Local OCR Auto-Start: {LOCAL_OCR_AUTO_START}")
 print(f"Local OCR Idle Timeout: {LOCAL_OCR_IDLE_TIMEOUT}s")
 
@@ -556,7 +553,6 @@ def handle_process():
             mistral_api_key=api_key_to_use,
             local_server_url=LOCAL_OCR_URL,
             local_model=local_model,
-            use_vllm=LOCAL_OCR_USE_VLLM,
             container_name=LOCAL_OCR_CONTAINER_NAME,
             docker_image=LOCAL_OCR_DOCKER_IMAGE,
             idle_timeout=LOCAL_OCR_IDLE_TIMEOUT,

@@ -1,5 +1,5 @@
 # Dockerfile for Local OCR service with GPU support
-# Supports: Surya OCR, Chandra OCR (PaddleOCR-VL not recommended)
+# Supports: Surya OCR (~300M params), Chandra OCR (9B params)
 
 FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
 

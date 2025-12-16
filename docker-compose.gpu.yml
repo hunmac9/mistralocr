@@ -8,7 +8,6 @@
 # Available models:
 # - surya: Surya OCR (~300M params) - Works on CPU or GPU, fast
 # - chandra: Chandra OCR (9B params) - GPU required, best quality
-# - paddle: PaddleOCR-VL - Not recommended (vLLM unsupported, transformers issues)
 
 services:
   # Main application service

@@ -1,4 +1,5 @@
-# Dockerfile for PaddleOCR-VL local OCR service (CPU version)
+# Dockerfile for Local OCR service (CPU version)
+# Supports: Surya OCR (CPU-friendly), Chandra OCR (GPU required)
 # For GPU version, use Dockerfile.gpu
 
 FROM python:3.11-slim
@@ -45,7 +46,7 @@ USER appuser
 ENV PORT=8000
 ENV HOST=0.0.0.0
 ENV IDLE_TIMEOUT=300
-ENV MODEL_PATH=PaddlePaddle/PaddleOCR-VL
+ENV DEFAULT_MODEL=surya
 # Hugging Face cache directory
 ENV HF_HOME=/home/appuser/.cache/huggingface
 ENV TRANSFORMERS_CACHE=/home/appuser/.cache/huggingface

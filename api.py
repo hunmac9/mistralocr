@@ -159,8 +159,8 @@ def submit_ocr_job():
     upload_folder = Path(current_app.config.get('UPLOAD_FOLDER', 'uploads'))
     ocr_backend_default = current_app.config.get('OCR_BACKEND', 'auto')
     local_ocr_url = current_app.config.get('LOCAL_OCR_URL', 'http://localhost:8000')
-    local_ocr_container = current_app.config.get('LOCAL_OCR_CONTAINER_NAME', 'mistralocr-paddleocr')
-    local_ocr_image = current_app.config.get('LOCAL_OCR_DOCKER_IMAGE', 'mistralocr-paddleocr:latest')
+    local_ocr_container = current_app.config.get('LOCAL_OCR_CONTAINER_NAME', 'mistralocr-local-ocr')
+    local_ocr_image = current_app.config.get('LOCAL_OCR_DOCKER_IMAGE', 'mistralocr-local-ocr:latest')
     local_ocr_timeout = current_app.config.get('LOCAL_OCR_IDLE_TIMEOUT', 300)
     local_ocr_auto_start = current_app.config.get('LOCAL_OCR_AUTO_START', True)
     allowed_extensions = current_app.config.get('ALLOWED_EXTENSIONS', {'pdf'})
@@ -434,9 +434,9 @@ def list_backends():
                 "backends": [
                     {
                         "id": "local",
-                        "name": "Local PaddleOCR-VL",
+                        "name": "Local OCR (Surya/Chandra)",
                         "status": "available|unavailable",
-                        "description": "On-device OCR using PaddleOCR-VL model"
+                        "description": "On-device OCR using Surya or Chandra models"
                     },
                     {
                         "id": "mistral",
@@ -469,9 +469,9 @@ def list_backends():
         "backends": [
             {
                 "id": "local",
-                "name": "Local PaddleOCR-VL",
+                "name": "Local OCR (Surya/Chandra)",
                 "status": local_status,
-                "description": "On-device OCR using PaddleOCR-VL model (0.9B parameters)"
+                "description": "On-device OCR using Surya (~300M) or Chandra (9B) models"
             },
             {
                 "id": "mistral",

@@ -50,14 +50,13 @@ services:
       context: ./local_ocr
       dockerfile: Dockerfile
     environment:
-      # Default model: surya (CPU-friendly), paddle (GPU recommended), chandra (GPU required)
+      # Default model: surya (CPU-friendly) or chandra (GPU required)
       DEFAULT_MODEL: ${LOCAL_OCR_MODEL:-surya}
       # Idle timeout in seconds (model unloads after this period of inactivity)
       IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
       PORT: 8000
       HOST: 0.0.0.0
-      # Model paths for PaddleOCR-VL and Chandra (Surya uses built-in paths)
-      PADDLE_MODEL_PATH: PaddlePaddle/PaddleOCR-VL
+      # Model path for Chandra (Surya uses built-in paths)
       CHANDRA_MODEL_PATH: datalab-to/chandra
     volumes:
       # Persist model cache to avoid re-downloading

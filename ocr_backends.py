@@ -7,7 +7,7 @@ OCR Backend Abstraction Layer
 
 This module provides a unified interface for different OCR backends:
 - Mistral OCR (cloud-based)
-- Local OCR using PaddleOCR-VL (via Docker container)
+- Local OCR using Surya or Chandra (via Docker container)
 
 The local OCR is the default and preferred option as it doesn't require
 an API key and keeps data private.
@@ -194,8 +194,8 @@ class LocalOCRBackend(OCRBackend):
     def __init__(
         self,
         server_url: str = "http://localhost:8000",
-        container_name: str = "mistralocr-paddleocr",
-        docker_image: str = "mistralocr-paddleocr:latest",
+        container_name: str = "mistralocr-local-ocr",
+        docker_image: str = "mistralocr-local-ocr:latest",
         idle_timeout: int = 300,
         auto_start: bool = True,
         use_docker: bool = True,
@@ -276,7 +276,7 @@ class LocalOCRBackend(OCRBackend):
                     "-e", f"IDLE_TIMEOUT={self.idle_timeout}",
                     "-e", f"PORT={port}",
                     # Mount volume for model cache to persist downloads
-                    "-v", "paddleocr-cache:/home/appuser/.cache",
+                    "-v", "mistralocr-cache:/home/appuser/.cache",
                     self.docker_image
                 ]
 

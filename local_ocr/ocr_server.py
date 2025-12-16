@@ -488,7 +488,7 @@ def ocr():
 
     Accepts multipart/form-data with:
     - file: The PDF or image file to process
-    - model: Model to use (paddle, chandra) - default: current or default model
+    - model: Model to use (surya, chandra) - default: current or default model
     - include_images: Whether to include base64 images in response - default: true
 
     Returns JSON with OCR results in a format compatible with Mistral OCR response.
@@ -593,7 +593,7 @@ def ocr_stream():
 
     Form parameters:
     - file: The PDF or image file to process
-    - model: Model to use (paddle, chandra) - default: current or default model
+    - model: Model to use (surya, chandra) - default: current or default model
     - include_images: Whether to include base64 images in response - default: true
 
     Progress messages:
@@ -662,7 +662,7 @@ def ocr_stream():
 
             # Check if we need to load/switch models
             if model is None or current_model_type != target_model:
-model_display = "Surya OCR" if target_model == ModelType.SURYA else "Chandra OCR"
+                model_display = "Surya OCR" if target_model == ModelType.SURYA else "Chandra OCR"
                 yield json.dumps({"type": "status", "message": f"Loading {model_display} model"}) + "\n"
 
             # Process each page/image
@@ -739,7 +739,7 @@ def ocr_image():
 
     JSON body:
     - image: Base64-encoded image data (with or without data URI prefix)
-    - model: Model to use (paddle, chandra) - default: current or default model
+    - model: Model to use (surya, chandra) - default: current or default model
 
     Returns JSON with OCR text result.
     """
