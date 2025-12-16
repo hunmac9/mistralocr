@@ -7,8 +7,8 @@ gunicorn==23.0.0
 torch==2.5.1+cpu
 torchvision==0.20.1+cpu
 
-# Transformers for PaddleOCR-VL model
-transformers>=4.46.0
+# Transformers for PaddleOCR-VL model (4.55.0+ required)
+transformers>=4.55.0
 
 # Image processing
 Pillow>=10.0.0

@@ -196,35 +196,26 @@ def process_image(image: Image.Image, task: str = "ocr") -> str:
 
     prompt = PROMPTS.get(task, PROMPTS["ocr"])
 
-    # Build conversation for chat template
-    conversation = [
-        {
-            "role": "user",
-            "content": [
-                {"type": "image"},
-                {"type": "text", "text": prompt},
-            ]
-        }
-    ]
+    # Build messages - just text content, no image placeholder
+    messages = [{"role": "user", "content": prompt}]
 
     with model_lock:
         print(f"    [OCR] Preparing inputs...")
         prep_start = time.time()
 
         # Apply chat template to get the text prompt
-        text_prompt = processor.apply_chat_template(
-            conversation,
-            add_generation_prompt=True,
-            tokenize=False
+        text = processor.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True
         )
 
-        # Process image and text together using the processor's __call__ method
-        inputs = processor(
-            text=[text_prompt],
-            images=[image],
-            return_tensors="pt",
-            padding=True
-        ).to(DEVICE)
+        # Process image and text together
+        inputs = processor(text=[text], images=[image], return_tensors="pt")
+
+        # Move tensors to device
+        inputs = {k: (v.to(DEVICE) if isinstance(v, torch.Tensor) else v)
+                  for k, v in inputs.items()}
 
         print(f"    [OCR] Inputs prepared in {time.time() - prep_start:.2f}s")
         print(f"    [OCR] Input keys: {list(inputs.keys())}")
@@ -232,13 +223,9 @@ def process_image(image: Image.Image, task: str = "ocr") -> str:
         print(f"    [OCR] Starting inference (this may take several minutes on CPU)...")
         gen_start = time.time()
 
-        with torch.no_grad():
-            # Generate with explicit parameters
-            generated_ids = model.generate(
-                input_ids=inputs.input_ids,
-                attention_mask=inputs.attention_mask,
-                pixel_values=inputs.get("pixel_values"),
-                image_grid_thw=inputs.get("image_grid_thw"),
+        with torch.inference_mode():
+            generated = model.generate(
+                **inputs,
                 max_new_tokens=1024,
                 do_sample=False,
                 use_cache=True
@@ -246,15 +233,12 @@ def process_image(image: Image.Image, task: str = "ocr") -> str:
 
         print(f"    [OCR] Inference completed in {time.time() - gen_start:.2f}s")
 
-        # Trim the input tokens from the output
-        generated_ids_trimmed = [
-            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-        ]
-        result = processor.batch_decode(
-            generated_ids_trimmed,
-            skip_special_tokens=True,
-            clean_up_tokenization_spaces=False
-        )[0]
+        # Decode and extract response
+        result = processor.batch_decode(generated, skip_special_tokens=True)[0]
+
+        # Extract just the answer (after the prompt)
+        if text in result:
+            result = result.split(text)[-1].strip()
 
     return result.strip()
 
