@@ -722,13 +722,27 @@ def job_status(job_id):
     # We can pass the initial status if available, but JS will handle updates.
     with jobs_lock:
         job = jobs.get(job_id)
-        initial_status = job['status'] if job else 'loading' # Or 'unknown'
+        initial_status = job['status'] if job else 'loading'
+        download_url = job.get('download_url', '') if job else ''
 
     # Check if job exists, otherwise show error page immediately
     if not job:
          return render_template('job.html', job_id=job_id, status='error', error='Invalid or expired job ID')
 
-    return render_template('job.html', job_id=job_id, status=initial_status) # Pass initial status
+    return render_template('job.html', job_id=job_id, status=initial_status, download_url=download_url)
+
+@app.route('/job/<job_id>/status')
+def job_status_json(job_id):
+    """JSON endpoint for polling job status (fallback when SSE disconnects)."""
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if not job:
+            return jsonify({'status': 'error', 'error': 'Invalid or expired job ID'}), 404
+        return jsonify({
+            'status': job.get('status'),
+            'download_url': job.get('download_url'),
+            'error': job.get('error')
+        })
 
 # --- API Blueprint Registration ---
 from api import api_bp

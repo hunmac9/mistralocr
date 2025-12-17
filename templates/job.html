@@ -10,7 +10,7 @@
 </head>
 <body>
 
-<div class="job-screen" x-data="jobStatus('{{ job_id }}', '{{ status }}', '{{ download_url or '' }}', '{{ error or '' }}')">
+<div class="job-screen" x-data="jobStatus('{{ job_id }}', '{{ status }}', '{{ download_url|default('', true) }}', '{{ error|default('', true) }}')">
   <!-- Full screen grid background -->
   <div class="screen-grid" :class="{ 'active': isProcessing, 'success': status === 'done', 'error': status === 'error' }"></div>
 
@@ -139,12 +139,41 @@ function jobStatus(jobId, initialStatus, initialDownloadUrl, initialError) {
       };
 
       this.eventSource.onerror = () => {
-        this.status = 'error';
-        this.errorMsg = 'Connection lost';
-        this.currentMessage = 'Connection lost';
-        this.addLog('Connection lost');
+        // Don't immediately show error - start polling instead
         this.eventSource.close();
+        this.addLog('Connection interrupted, polling for status...');
+        this.currentMessage = 'Reconnecting...';
+        this.startPolling(jobId);
       };
+    },
+
+    startPolling(jobId) {
+      // Poll every 5 seconds until job completes or errors
+      this.pollInterval = setInterval(async () => {
+        try {
+          const response = await fetch(`/job/${jobId}/status`);
+          const data = await response.json();
+
+          this.status = data.status;
+
+          if (data.status === 'done' && data.download_url) {
+            this.downloadUrl = data.download_url;
+            this.currentMessage = 'Complete';
+            this.addLog('Download ready');
+            clearInterval(this.pollInterval);
+          } else if (data.status === 'error') {
+            this.errorMsg = data.error || 'An error occurred';
+            this.currentMessage = 'Failed';
+            this.addLog(this.errorMsg);
+            clearInterval(this.pollInterval);
+          } else if (data.status === 'processing') {
+            this.currentMessage = 'Processing...';
+          }
+        } catch (e) {
+          // Keep polling even if one request fails
+          console.log('Poll failed, retrying...', e);
+        }
+      }, 5000);
     }
   }
 }
