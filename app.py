@@ -102,7 +102,7 @@ LOCAL_OCR_CONTAINER_NAME = os.getenv('LOCAL_OCR_CONTAINER_NAME', 'mistralocr-loc
 
 print(f"OCR Backend: {OCR_BACKEND}")
 print(f"Local OCR URL: {LOCAL_OCR_URL}")
-print(f"Local OCR Model: Surya")
+print(f"Local OCR Models: Surya, PaddleOCR-VL")
 print(f"Local OCR Auto-Start: {LOCAL_OCR_AUTO_START}")
 print(f"Local OCR Idle Timeout: {LOCAL_OCR_IDLE_TIMEOUT}s")
 

@@ -21,11 +21,21 @@
       <button
         type="button"
         class="toggle-btn"
-        :class="{ active: backend === 'local' }"
-        @click="backend = 'local'"
+        :class="{ active: backend === 'surya' }"
+        @click="backend = 'surya'"
         {% if not local_ocr_available and not local_ocr_auto_start %}disabled{% endif %}
       >
         <span class="toggle-label">Surya</span>
+        <span class="toggle-status {% if local_ocr_available %}on{% elif local_ocr_auto_start %}idle{% else %}off{% endif %}"></span>
+      </button>
+      <button
+        type="button"
+        class="toggle-btn"
+        :class="{ active: backend === 'paddleocr-vl' }"
+        @click="backend = 'paddleocr-vl'"
+        {% if not local_ocr_available and not local_ocr_auto_start %}disabled{% endif %}
+      >
+        <span class="toggle-label">PaddleOCR</span>
         <span class="toggle-status {% if local_ocr_available %}on{% elif local_ocr_auto_start %}idle{% else %}off{% endif %}"></span>
       </button>
       {% if has_mistral_key %}
@@ -119,7 +129,7 @@ function uploader() {
     files: [],
     dragging: false,
     submitting: false,
-    backend: '{% if ocr_backend == "mistral" %}mistral{% else %}local{% endif %}',
+    backend: '{% if ocr_backend == "mistral" %}mistral{% elif ocr_backend == "paddleocr-vl" %}paddleocr-vl{% else %}surya{% endif %}',
 
     handleFiles(fileList) {
       this.files = [...fileList].filter(f => f.type === 'application/pdf');

@@ -20,5 +20,6 @@ numpy>=1.26.0
 surya-ocr>=0.8.0
 
 # PaddleOCR-VL (via transformers) - SOTA document parsing
-transformers>=4.45.0
+# Requires transformers 5.0+ for native PaddleOCR-VL support
+transformers>=5.0.0
 accelerate>=0.34.0

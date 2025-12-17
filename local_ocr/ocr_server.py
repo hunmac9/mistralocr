@@ -161,9 +161,9 @@ def process_image_surya(image: Image.Image) -> str:
 # ============================================================================
 
 def load_paddleocr_vl():
-    """Load the PaddleOCR-VL model (0.9B params) via transformers."""
+    """Load the PaddleOCR-VL model (0.9B params) via transformers 5.0+."""
     global paddleocr_model, paddleocr_processor
-    from transformers import AutoModelForCausalLM, AutoProcessor
+    from transformers import AutoModelForImageTextToText, AutoProcessor
 
     if paddleocr_model is not None:
         return True
@@ -177,7 +177,6 @@ def load_paddleocr_vl():
 
         try:
             model_kwargs = {
-                "trust_remote_code": True,
                 "torch_dtype": torch.bfloat16,
             }
 
@@ -189,14 +188,14 @@ def load_paddleocr_vl():
             except ImportError:
                 print("  Flash-attention not available, using standard attention")
 
-            paddleocr_model = AutoModelForCausalLM.from_pretrained(
+            # Use AutoModelForImageTextToText for transformers 5.0+ native support
+            paddleocr_model = AutoModelForImageTextToText.from_pretrained(
                 "PaddlePaddle/PaddleOCR-VL",
                 **model_kwargs
             ).to(DEVICE).eval()
 
             paddleocr_processor = AutoProcessor.from_pretrained(
-                "PaddlePaddle/PaddleOCR-VL",
-                trust_remote_code=True
+                "PaddlePaddle/PaddleOCR-VL"
             )
 
             load_time = time.time() - start_time
@@ -248,40 +247,42 @@ def process_image_paddleocr(image: Image.Image) -> str:
         print(f"    [PaddleOCR-VL] Starting inference...")
         gen_start = time.time()
 
-        # Prepare the message with image and OCR prompt
+        # Prepare the message with image and OCR prompt (transformers 5.0+ format)
         messages = [
-            {"role": "user", "content": [
-                {"type": "image", "image": image},
-                {"type": "text", "text": "OCR:"},
-            ]}
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": image},
+                    {"type": "text", "text": "OCR:"},
+                ]
+            }
         ]
 
-        # Process the input
+        # Process the input using apply_chat_template
         inputs = paddleocr_processor.apply_chat_template(
             messages,
-            tokenize=True,
             add_generation_prompt=True,
+            tokenize=True,
             return_dict=True,
-            return_tensors="pt"
+            return_tensors="pt",
         ).to(DEVICE)
 
         # Generate the OCR output
-        with torch.no_grad():
+        with torch.inference_mode():
             outputs = paddleocr_model.generate(
                 **inputs,
                 max_new_tokens=4096,
                 do_sample=False,
+                use_cache=True,
             )
 
-        # Decode the result
-        result = paddleocr_processor.batch_decode(
-            outputs,
-            skip_special_tokens=True
-        )[0]
-
-        # Extract text after "OCR:" prompt (the model echoes the prompt)
-        if "OCR:" in result:
-            result = result.split("OCR:", 1)[-1].strip()
+        # Decode result - trim the input tokens from output
+        generated_ids_trimmed = outputs[0][inputs["input_ids"].shape[-1]:]
+        result = paddleocr_processor.decode(
+            generated_ids_trimmed,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False
+        )
 
         print(f"    [PaddleOCR-VL] Inference completed in {time.time() - gen_start:.2f}s")
 
