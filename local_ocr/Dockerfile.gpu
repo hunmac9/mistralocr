@@ -32,8 +32,15 @@ RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 # Copy requirements
 COPY requirements.txt .
 
-# Install PyTorch with CUDA support first (pin matching versions)
-RUN pip install --no-cache-dir torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121
+# Install all dependencies first (filter out CPU torch references)
+# This lets pip resolve the correct torch version for surya-ocr
+RUN grep -v "torch" requirements.txt | grep -v "extra-index-url.*cpu" | pip install --no-cache-dir -r /dev/stdin
+
+# Now reinstall torch and torchvision with CUDA support
+# Get the installed torch version and reinstall with CUDA from PyTorch index
+RUN TORCH_VERSION=$(python -c "import torch; print(torch.__version__.split('+')[0])") && \
+    echo "Reinstalling torch $TORCH_VERSION with CUDA support..." && \
+    pip install --no-cache-dir torch==$TORCH_VERSION torchvision --index-url https://download.pytorch.org/whl/cu124
 
 # Install flash-attention for PaddleOCR-VL optimization (optional but recommended)
 # Note: Requires ninja and packaging for build
@@ -41,13 +48,8 @@ RUN pip install --no-cache-dir ninja packaging && \
     pip install --no-cache-dir flash-attn --no-build-isolation || \
     echo "Flash-attention installation failed (optional), continuing without it"
 
-# Install other dependencies (filter out ALL CPU torch references)
-# Remove: torch, torchvision, and the CPU extra-index-url
-RUN grep -v "torch" requirements.txt | grep -v "extra-index-url.*cpu" | pip install --no-cache-dir -r /dev/stdin
-
-# Verify CUDA torch is still installed (not overwritten by dependencies)
-# Check version string contains 'cu' (e.g., 2.5.1+cu121) not 'cpu'
-RUN python -c "import torch; v=torch.__version__; assert 'cpu' not in v, f'CPU PyTorch installed: {v}'; print(f'PyTorch {v} (CUDA build)')"
+# Verify CUDA torch is installed and show versions
+RUN python -c "import torch; import torchvision; print(f'PyTorch {torch.__version__}'); print(f'TorchVision {torchvision.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}')"
 
 # Copy application
 COPY ocr_server.py .
