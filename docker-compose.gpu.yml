@@ -2,12 +2,8 @@
 # Use with: docker compose -f docker-compose.gpu.yml up -d --build
 #
 # Requirements:
-# - NVIDIA GPU with CUDA support (8GB+ VRAM recommended for Chandra)
+# - NVIDIA GPU with CUDA support
 # - NVIDIA Container Toolkit installed
-#
-# Available models:
-# - surya: Surya OCR (~300M params) - Works on CPU or GPU, fast
-# - chandra: Chandra OCR (9B params) - GPU required, best quality
 
 services:
   # Main application service
@@ -24,7 +20,6 @@ services:
       FLASK_DEBUG: ${FLASK_DEBUG:-False}
       OCR_BACKEND: ${OCR_BACKEND:-auto}
       LOCAL_OCR_URL: http://local-ocr:8000
-      LOCAL_OCR_MODEL: ${LOCAL_OCR_MODEL:-surya}
       LOCAL_OCR_IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
       LOCAL_OCR_AUTO_START: "false"
     depends_on:
@@ -34,13 +29,12 @@ services:
       - ocr-network
     command: ["gunicorn", "--bind", "0.0.0.0:${FLASK_PORT:-5009}", "--timeout", "600", "app:app"]
 
-  # Local OCR server with GPU support
+  # Local OCR server with GPU support - Surya OCR (~300M params)
   local-ocr:
     build:
       context: ./local_ocr
       dockerfile: Dockerfile.gpu
     environment:
-      DEFAULT_MODEL: ${LOCAL_OCR_MODEL:-surya}
       IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
       FORCE_CUDA: "true"
       NVIDIA_VISIBLE_DEVICES: all

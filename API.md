@@ -78,9 +78,9 @@ GET /api/v1/backends
   "backends": [
     {
       "id": "local",
-      "name": "Local OCR (Surya/Chandra)",
+      "name": "Local OCR (Surya)",
       "status": "available",
-      "description": "On-device OCR using Surya (~300M) or Chandra (9B) models"
+      "description": "On-device OCR using Surya (~300M params)"
     },
     {
       "id": "mistral",

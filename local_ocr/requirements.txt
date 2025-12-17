@@ -7,32 +7,14 @@ gunicorn==23.0.0
 torch==2.5.1+cpu
 torchvision==0.20.1+cpu
 
-# Transformers for model loading
-transformers>=4.55.0
-
 # Image processing
 Pillow>=10.0.0
 
 # PDF processing
 PyMuPDF>=1.24.0
 
-# Hugging Face Hub for model downloads
-huggingface-hub>=0.20.0
-
-# Model dependencies
-einops
-accelerate
-safetensors
-sentencepiece
-protobuf>=3.20.0
-scipy
-bitsandbytes>=0.42.0  # For 8-bit/4-bit quantization
-
 # Numpy
 numpy>=1.26.0
 
-# Chandra OCR model (GPU recommended - 9B params)
-chandra-ocr>=0.1.8
-
-# Surya OCR (CPU-friendly, ~300M params)
+# Surya OCR (~300M params) - CPU and GPU friendly
 surya-ocr>=0.8.0

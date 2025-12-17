@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-WebApp-green?logo=flask)](https://flask.palletsprojects.com/)
 
-A web application using Flask to convert PDF files into standard Markdown documents, extracting text and images. Supports both **local OCR** (using Surya or Chandra) and **cloud OCR** (using Mistral AI API).
+A web application using Flask to convert PDF files into standard Markdown documents, extracting text and images. Supports both **local OCR** (using Surya) and **cloud OCR** (using Mistral AI API).
 
 *Inspired by an Obsidian version at [diegomarzaa/pdf-ocr-obsidian](https://github.com/diegomarzaa/pdf-ocr-obsidian)*
 
@@ -12,7 +12,7 @@ A web application using Flask to convert PDF files into standard Markdown docume
 
 ## Features
 
--   **Local OCR (Default):** Uses Surya OCR (CPU-friendly, ~300M params) or Chandra OCR (GPU, 9B params) for privacy-preserving, no-API-key-required OCR
+-   **Local OCR (Default):** Uses Surya OCR (~300M params, CPU and GPU friendly) for privacy-preserving, no-API-key-required OCR
 -   **Cloud OCR (Optional):** Leverages [Mistral OCR](https://mistral.ai/news/mistral-ocr) for accurate text/image extraction
 -   **Upload Interface:** Simple web UI for uploading PDFs with OCR engine selection
 -   **Standard Markdown:** Outputs clean Markdown with relative image links
@@ -65,7 +65,7 @@ A web application using Flask to convert PDF files into standard Markdown docume
     * `--build`: Rebuilds the images if needed
     * `-d`: Runs the containers in the background (detached mode)
 
-    **Note:** The first run will download the OCR model (Surya ~1GB, Chandra ~18GB), which may take several minutes.
+    **Note:** The first run will download the Surya OCR model (~1GB), which may take a few minutes.
 
 4. **Access the Web App:**
 
@@ -97,7 +97,7 @@ All configuration is done via environment variables in the `.env` file:
 
 **Backend Modes:**
 - `auto`: Uses local OCR by default, falls back to Mistral if API key is available
-- `local`: Uses only local OCR (Surya or Chandra, no API key required)
+- `local`: Uses only local OCR (Surya, no API key required)
 - `mistral`: Uses only Mistral OCR API (requires API key)
 
 ### Server Settings
@@ -113,7 +113,7 @@ All configuration is done via environment variables in the `.env` file:
 
 1. User uploads PDF(s) via the web UI and selects an OCR engine
 2. The Flask backend sends the PDF to the selected OCR backend:
-   - **Local:** Surya or Chandra OCR processes the PDF locally in Docker
+   - **Local:** Surya OCR processes the PDF locally in Docker
    - **Cloud:** PDF is uploaded to Mistral OCR API
 3. OCR engine returns markdown-formatted text and images
 4. The app saves the markdown and images in a folder
@@ -121,9 +121,7 @@ All configuration is done via environment variables in the `.env` file:
 
 ### Memory Management
 
-The local OCR models use varying amounts of RAM/VRAM:
-- **Surya OCR:** ~2-4GB RAM (CPU-friendly)
-- **Chandra OCR:** ~18GB VRAM (GPU required)
+The local OCR model (Surya) uses ~2-4GB RAM on CPU or ~2GB VRAM on GPU.
 
 To minimize resource usage:
 
@@ -175,7 +173,7 @@ When using GPU mode:
 +-------------------+      +-------------------+
 |                   |      |                   |
 |   Main App        | ---> |   Local OCR       |
-|   (Flask)         |      |   (Surya/Chandra) |
+|   (Flask)         |      |   (Surya)         |
 |   Port: 5009      |      |   Port: 8000      |
 |                   |      |                   |
 +-------------------+      +-------------------+

@@ -434,9 +434,9 @@ def list_backends():
                 "backends": [
                     {
                         "id": "local",
-                        "name": "Local OCR (Surya/Chandra)",
+                        "name": "Local OCR (Surya)",
                         "status": "available|unavailable",
-                        "description": "On-device OCR using Surya or Chandra models"
+                        "description": "On-device OCR using Surya (~300M params)"
                     },
                     {
                         "id": "mistral",
@@ -469,9 +469,9 @@ def list_backends():
         "backends": [
             {
                 "id": "local",
-                "name": "Local OCR (Surya/Chandra)",
+                "name": "Local OCR (Surya)",
                 "status": local_status,
-                "description": "On-device OCR using Surya (~300M) or Chandra (9B) models"
+                "description": "On-device OCR using Surya (~300M params)"
             },
             {
                 "id": "mistral",

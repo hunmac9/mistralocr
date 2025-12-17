@@ -7,7 +7,7 @@ OCR Backend Abstraction Layer
 
 This module provides a unified interface for different OCR backends:
 - Mistral OCR (cloud-based)
-- Local OCR using Surya or Chandra (via Docker container)
+- Local OCR using Surya (via Docker container)
 
 The local OCR is the default and preferred option as it doesn't require
 an API key and keeps data private.
@@ -178,17 +178,15 @@ class MistralOCRBackend(OCRBackend):
 
 class LocalOCRBackend(OCRBackend):
     """
-    OCR backend using local models via Docker container.
+    OCR backend using Surya OCR via Docker container.
 
-    Supports multiple models:
-    - Surya OCR (surya): CPU-friendly, fast (~300M params)
-    - Chandra OCR (chandra): GPU required, best quality (9B params)
+    Uses Surya OCR (~300M params) - a CPU-friendly model that also benefits
+    from GPU acceleration.
 
     This backend manages the Docker container lifecycle automatically:
     - Starts the container on first use
     - Keeps it running while processing
     - Stops after idle timeout (configurable)
-    - Switches between models as requested
     """
 
     def __init__(
@@ -199,7 +197,7 @@ class LocalOCRBackend(OCRBackend):
         idle_timeout: int = 300,
         auto_start: bool = True,
         use_docker: bool = True,
-        local_model: str = "surya",  # "surya" or "chandra"
+        **kwargs,  # Accept but ignore extra kwargs for backwards compatibility
     ):
         self.server_url = server_url.rstrip('/')
         self.container_name = container_name
@@ -207,7 +205,6 @@ class LocalOCRBackend(OCRBackend):
         self.idle_timeout = idle_timeout
         self.auto_start = auto_start
         self.use_docker = use_docker
-        self.local_model = local_model
         self._container_started = False
         self._start_lock = threading.Lock()
 
@@ -220,8 +217,6 @@ class LocalOCRBackend(OCRBackend):
             return False
 
     def get_name(self) -> str:
-        if self.local_model == "chandra":
-            return "Local OCR (Chandra)"
         return "Local OCR (Surya)"
 
     def _is_container_running(self) -> bool:
@@ -335,16 +330,15 @@ class LocalOCRBackend(OCRBackend):
             else:
                 raise RuntimeError("Local OCR server is not available")
 
-        model_display = "Chandra" if self.local_model == "chandra" else "Surya"
-        self._report(on_progress, f"Sending to {model_display}")
-        print(f"  [Local OCR] Processing {pdf_path.name} with {model_display}...")
+        self._report(on_progress, "Sending to Surya")
+        print(f"  [Local OCR] Processing {pdf_path.name} with Surya...")
         start_time = time.time()
 
         try:
             # Use streaming endpoint for progress updates
             with open(pdf_path, 'rb') as f:
                 files = {'file': (pdf_path.name, f, 'application/pdf')}
-                data = {'task': 'ocr', 'include_images': 'true', 'model': self.local_model}
+                data = {'task': 'ocr', 'include_images': 'true'}
 
                 response = requests.post(
                     f"{self.server_url}/ocr/stream",
@@ -424,7 +418,6 @@ def get_ocr_backend(
     backend_type: str = "auto",
     mistral_api_key: Optional[str] = None,
     local_server_url: str = "http://localhost:8000",
-    local_model: str = "surya",
     **kwargs
 ) -> OCRBackend:
     """
@@ -434,7 +427,6 @@ def get_ocr_backend(
         backend_type: One of "auto", "local", or "mistral"
         mistral_api_key: API key for Mistral (required if backend_type is "mistral")
         local_server_url: URL of local OCR server
-        local_model: Local model to use ("surya" or "chandra")
         **kwargs: Additional arguments passed to backend constructor
 
     Returns:
@@ -450,16 +442,15 @@ def get_ocr_backend(
         return MistralOCRBackend(api_key=mistral_api_key)
 
     elif backend_type == "local":
-        return LocalOCRBackend(server_url=local_server_url, local_model=local_model, **kwargs)
+        return LocalOCRBackend(server_url=local_server_url, **kwargs)
 
     else:  # auto
         # Try local first (default)
-        local_backend = LocalOCRBackend(server_url=local_server_url, local_model=local_model, **kwargs)
+        local_backend = LocalOCRBackend(server_url=local_server_url, **kwargs)
 
         # Check if local is available or can be started
         if local_backend.is_available():
-            model_name = "Chandra" if local_model == "chandra" else "Surya"
-            print(f"Using local OCR backend with {model_name} (already running)")
+            print("Using local OCR backend with Surya (already running)")
             return local_backend
 
         # If auto_start is enabled, try to start it

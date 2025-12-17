@@ -43,21 +43,16 @@ services:
     # Override the default CMD:
     command: ["gunicorn", "--bind", "0.0.0.0:${FLASK_PORT:-5009}", "--timeout", "300", "app:app"]
 
-  # Local OCR service - Surya OCR (CPU-friendly, ~300M params)
-  # For GPU, use docker-compose.gpu.yml instead
+  # Local OCR service - Surya OCR (~300M params, CPU and GPU friendly)
   local-ocr:
     build:
       context: ./local_ocr
       dockerfile: Dockerfile
     environment:
-      # Default model: surya (CPU-friendly) or chandra (GPU required)
-      DEFAULT_MODEL: ${LOCAL_OCR_MODEL:-surya}
       # Idle timeout in seconds (model unloads after this period of inactivity)
       IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
       PORT: 8000
       HOST: 0.0.0.0
-      # Model path for Chandra (Surya uses built-in paths)
-      CHANDRA_MODEL_PATH: datalab-to/chandra
     volumes:
       # Persist model cache to avoid re-downloading
       - ocr-model-cache:/home/appuser/.cache

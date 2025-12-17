@@ -99,14 +99,10 @@ LOCAL_OCR_IDLE_TIMEOUT = int(os.getenv('LOCAL_OCR_IDLE_TIMEOUT', '300'))
 LOCAL_OCR_AUTO_START = os.getenv('LOCAL_OCR_AUTO_START', 'true').lower() == 'true'
 LOCAL_OCR_DOCKER_IMAGE = os.getenv('LOCAL_OCR_DOCKER_IMAGE', 'mistralocr-local-ocr:latest')
 LOCAL_OCR_CONTAINER_NAME = os.getenv('LOCAL_OCR_CONTAINER_NAME', 'mistralocr-local-ocr')
-# LOCAL_OCR_MODEL: "surya" (default) or "chandra"
-# - "surya": Surya OCR (~300M params) - CPU-friendly
-# - "chandra": Chandra OCR (9B params) - GPU required
-LOCAL_OCR_MODEL = os.getenv('LOCAL_OCR_MODEL', 'surya').lower()
 
 print(f"OCR Backend: {OCR_BACKEND}")
 print(f"Local OCR URL: {LOCAL_OCR_URL}")
-print(f"Local OCR Model: {LOCAL_OCR_MODEL}")
+print(f"Local OCR Model: Surya")
 print(f"Local OCR Auto-Start: {LOCAL_OCR_AUTO_START}")
 print(f"Local OCR Idle Timeout: {LOCAL_OCR_IDLE_TIMEOUT}s")
 
@@ -508,16 +504,13 @@ def background_process_job(job_id, temp_pdf_path, ocr_backend: OCRBackend, sessi
 
 @app.route('/')
 def index():
-    # Check if local OCR is available and get current model
+    # Check if local OCR is available
     local_ocr_available = False
-    local_ocr_current_model = None
     try:
         import requests
         response = requests.get(f"{LOCAL_OCR_URL}/status", timeout=2)
         if response.status_code == 200:
             local_ocr_available = True
-            status_data = response.json()
-            local_ocr_current_model = status_data.get('current_model')
     except:
         pass
 
@@ -528,8 +521,6 @@ def index():
         ocr_backend=OCR_BACKEND,
         local_ocr_available=local_ocr_available,
         local_ocr_auto_start=LOCAL_OCR_AUTO_START,
-        local_ocr_model=LOCAL_OCR_MODEL,
-        local_ocr_current_model=local_ocr_current_model,
         has_mistral_key=bool(os.getenv("MISTRAL_API_KEY")),
     )
 
@@ -541,9 +532,7 @@ def handle_process():
     files = request.files.getlist('pdf_files')
 
     # Get OCR backend configuration
-    # Allow form override of backend type and local model
     backend_type = request.form.get('ocr_backend', OCR_BACKEND)
-    local_model = request.form.get('local_model', LOCAL_OCR_MODEL)
     env_api_key = os.getenv("MISTRAL_API_KEY")
     form_api_key = request.form.get('api_key')
     api_key_to_use = env_api_key or form_api_key
@@ -554,7 +543,6 @@ def handle_process():
             backend_type=backend_type,
             mistral_api_key=api_key_to_use,
             local_server_url=LOCAL_OCR_URL,
-            local_model=local_model,
             container_name=LOCAL_OCR_CONTAINER_NAME,
             docker_image=LOCAL_OCR_DOCKER_IMAGE,
             idle_timeout=LOCAL_OCR_IDLE_TIMEOUT,
@@ -760,7 +748,6 @@ app.config['LOCAL_OCR_CONTAINER_NAME'] = LOCAL_OCR_CONTAINER_NAME
 app.config['LOCAL_OCR_DOCKER_IMAGE'] = LOCAL_OCR_DOCKER_IMAGE
 app.config['LOCAL_OCR_IDLE_TIMEOUT'] = LOCAL_OCR_IDLE_TIMEOUT
 app.config['LOCAL_OCR_AUTO_START'] = LOCAL_OCR_AUTO_START
-app.config['LOCAL_OCR_MODEL'] = LOCAL_OCR_MODEL
 app.config['ALLOWED_EXTENSIONS'] = ALLOWED_EXTENSIONS
 
 # Apply rate limiting to API endpoints

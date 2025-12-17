@@ -21,22 +21,12 @@
       <button
         type="button"
         class="toggle-btn"
-        :class="{ active: backend === 'local' && localModel === 'surya' }"
-        @click="backend = 'local'; localModel = 'surya'"
+        :class="{ active: backend === 'local' }"
+        @click="backend = 'local'"
         {% if not local_ocr_available and not local_ocr_auto_start %}disabled{% endif %}
       >
         <span class="toggle-label">Surya</span>
-        <span class="toggle-status {% if local_ocr_available and local_ocr_current_model == 'surya' %}on{% elif local_ocr_auto_start %}idle{% else %}off{% endif %}"></span>
-      </button>
-      <button
-        type="button"
-        class="toggle-btn"
-        :class="{ active: backend === 'local' && localModel === 'chandra' }"
-        @click="backend = 'local'; localModel = 'chandra'"
-        {% if not local_ocr_available and not local_ocr_auto_start %}disabled{% endif %}
-      >
-        <span class="toggle-label">Chandra</span>
-        <span class="toggle-status {% if local_ocr_available and local_ocr_current_model == 'chandra' %}on{% elif local_ocr_auto_start %}idle{% else %}off{% endif %}"></span>
+        <span class="toggle-status {% if local_ocr_available %}on{% elif local_ocr_auto_start %}idle{% else %}off{% endif %}"></span>
       </button>
       {% if has_mistral_key %}
       <button
@@ -56,7 +46,6 @@
   <main class="main">
     <form action="/process" method="post" enctype="multipart/form-data" @submit="submitting = true">
       <input type="hidden" name="ocr_backend" :value="backend">
-      <input type="hidden" name="local_model" :value="localModel">
 
       <div
         class="dropzone"
@@ -131,7 +120,6 @@ function uploader() {
     dragging: false,
     submitting: false,
     backend: '{% if ocr_backend == "mistral" %}mistral{% else %}local{% endif %}',
-    localModel: '{{ local_ocr_model }}',
 
     handleFiles(fileList) {
       this.files = [...fileList].filter(f => f.type === 'application/pdf');

@@ -1,6 +1,6 @@
 # Dockerfile for Local OCR service (CPU version)
-# Supports: Surya OCR (CPU-friendly), Chandra OCR (GPU required)
-# For GPU version, use Dockerfile.gpu
+# Uses Surya OCR (~300M params) - CPU and GPU friendly
+# For GPU version with faster performance, use Dockerfile.gpu
 
 FROM python:3.11-slim
 
@@ -46,7 +46,7 @@ USER appuser
 ENV PORT=8000
 ENV HOST=0.0.0.0
 ENV IDLE_TIMEOUT=300
-ENV DEFAULT_MODEL=surya
+# Note: Only Surya OCR is supported
 # Hugging Face cache directory
 ENV HF_HOME=/home/appuser/.cache/huggingface
 ENV TRANSFORMERS_CACHE=/home/appuser/.cache/huggingface
