@@ -43,19 +43,22 @@ services:
       DEFAULT_MODEL: ${LOCAL_OCR_MODEL:-surya}
       IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
       FORCE_CUDA: "true"
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:
       - ocr-cache:/home/appuser/.cache
     networks:
       - ocr-network
     # Required for GPU memory access
     ipc: host
-    # GPU passthrough configuration
+    # GPU passthrough - works on both Linux and Windows Docker Desktop
+    runtime: nvidia
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
+              count: all
               capabilities: [gpu]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]

@@ -56,14 +56,23 @@ model_lock = threading.Lock()
 last_activity_time = time.time()
 unload_timer = None
 
-# Device selection
+# Device selection - Debug GPU availability
+print(f"[GPU Debug] PyTorch version: {torch.__version__}")
+print(f"[GPU Debug] CUDA compiled: {torch.version.cuda}")
+print(f"[GPU Debug] CUDA available: {torch.cuda.is_available()}")
+print(f"[GPU Debug] cuDNN available: {torch.backends.cudnn.is_available() if hasattr(torch.backends, 'cudnn') else 'N/A'}")
+if not torch.cuda.is_available():
+    # Try to get more info about why CUDA isn't available
+    try:
+        torch.cuda.init()
+    except Exception as e:
+        print(f"[GPU Debug] CUDA init error: {e}")
+else:
+    print(f"[GPU Debug] Device count: {torch.cuda.device_count()}")
+    print(f"[GPU Debug] Device name: {torch.cuda.get_device_name(0)}")
+
 FORCE_CUDA = os.getenv("FORCE_CUDA", "false").lower() == "true"
-if FORCE_CUDA and torch.cuda.is_available():
-    DEVICE = "cuda"
-    GPU_NAME = torch.cuda.get_device_name(0)
-    GPU_MEMORY = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-    print(f"Using device: {DEVICE} ({GPU_NAME}, {GPU_MEMORY:.1f}GB VRAM)")
-elif torch.cuda.is_available():
+if torch.cuda.is_available():
     DEVICE = "cuda"
     GPU_NAME = torch.cuda.get_device_name(0)
     GPU_MEMORY = torch.cuda.get_device_properties(0).total_memory / (1024**3)
@@ -71,6 +80,8 @@ elif torch.cuda.is_available():
 else:
     DEVICE = "cpu"
     print(f"Using device: {DEVICE} (GPU not available)")
+    if FORCE_CUDA:
+        print("[WARNING] FORCE_CUDA=true but CUDA is not available!")
 
 
 def unload_model():
@@ -140,13 +151,16 @@ def load_chandra_model():
 
             # Chandra uses AutoModel, not AutoModelForCausalLM
             if DEVICE == "cuda":
+                print(f"  Loading Chandra model to GPU...")
                 model = AutoModel.from_pretrained(
                     CHANDRA_MODEL_PATH,
                     trust_remote_code=True,
                     torch_dtype=torch.bfloat16,
+                    device_map="cuda",
                     low_cpu_mem_usage=True,
-                ).cuda().eval()
+                ).eval()
             else:
+                print(f"  Loading Chandra model to CPU...")
                 model = AutoModel.from_pretrained(
                     CHANDRA_MODEL_PATH,
                     trust_remote_code=True,

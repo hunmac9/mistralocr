@@ -32,8 +32,13 @@ COPY requirements.txt .
 # Install PyTorch with CUDA support first
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu121
 
-# Install other dependencies (skip CPU torch from requirements)
-RUN grep -v "torch==" requirements.txt | grep -v "torchvision==" | pip install --no-cache-dir -r /dev/stdin
+# Install other dependencies (filter out ALL CPU torch references)
+# Remove: torch, torchvision, and the CPU extra-index-url
+RUN grep -v "torch" requirements.txt | grep -v "extra-index-url.*cpu" | pip install --no-cache-dir -r /dev/stdin
+
+# Verify CUDA torch is still installed (not overwritten by dependencies)
+# Check version string contains 'cu' (e.g., 2.5.1+cu121) not 'cpu'
+RUN python -c "import torch; v=torch.__version__; assert 'cpu' not in v, f'CPU PyTorch installed: {v}'; print(f'PyTorch {v} (CUDA build)')"
 
 # Copy application
 COPY ocr_server.py .
