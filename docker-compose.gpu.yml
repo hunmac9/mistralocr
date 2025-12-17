@@ -29,13 +29,14 @@ services:
       - ocr-network
     command: ["gunicorn", "--bind", "0.0.0.0:${FLASK_PORT:-5009}", "--timeout", "600", "app:app"]
 
-  # Local OCR server with GPU support - Surya OCR (~300M params)
+  # Local OCR server with GPU support - Surya OCR + PaddleOCR-VL
   local-ocr:
     build:
       context: ./local_ocr
       dockerfile: Dockerfile.gpu
     environment:
       IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
+      OCR_BACKEND: ${OCR_BACKEND:-surya}  # "surya" or "paddleocr-vl"
       FORCE_CUDA: "true"
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility

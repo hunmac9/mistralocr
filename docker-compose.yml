@@ -43,7 +43,7 @@ services:
     # Override the default CMD:
     command: ["gunicorn", "--bind", "0.0.0.0:${FLASK_PORT:-5009}", "--timeout", "300", "app:app"]
 
-  # Local OCR service - Surya OCR (~300M params, CPU and GPU friendly)
+  # Local OCR service - Surya OCR + PaddleOCR-VL
   local-ocr:
     build:
       context: ./local_ocr
@@ -51,6 +51,7 @@ services:
     environment:
       # Idle timeout in seconds (model unloads after this period of inactivity)
       IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
+      OCR_BACKEND: ${OCR_BACKEND:-surya}  # "surya" or "paddleocr-vl"
       PORT: 8000
       HOST: 0.0.0.0
     volumes:

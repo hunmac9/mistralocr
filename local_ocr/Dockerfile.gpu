@@ -32,6 +32,12 @@ COPY requirements.txt .
 # Install PyTorch with CUDA support first
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu121
 
+# Install flash-attention for PaddleOCR-VL optimization (optional but recommended)
+# Note: Requires ninja and packaging for build
+RUN pip install --no-cache-dir ninja packaging && \
+    pip install --no-cache-dir flash-attn --no-build-isolation || \
+    echo "Flash-attention installation failed (optional), continuing without it"
+
 # Install other dependencies (filter out ALL CPU torch references)
 # Remove: torch, torchvision, and the CPU extra-index-url
 RUN grep -v "torch" requirements.txt | grep -v "extra-index-url.*cpu" | pip install --no-cache-dir -r /dev/stdin
