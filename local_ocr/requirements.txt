@@ -26,6 +26,7 @@ safetensors
 sentencepiece
 protobuf>=3.20.0
 scipy
+bitsandbytes>=0.42.0  # For 8-bit/4-bit quantization
 
 # Numpy
 numpy>=1.26.0

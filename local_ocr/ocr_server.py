@@ -152,10 +152,16 @@ def load_chandra_model():
             # Chandra is based on Qwen3-VL, use the specific model class
             if DEVICE == "cuda":
                 print(f"  Loading Chandra model to GPU...")
+                # Use 8-bit quantization to fit in VRAM
+                from transformers import BitsAndBytesConfig
+                quantization_config = BitsAndBytesConfig(
+                    load_in_8bit=True,
+                    llm_int8_enable_fp32_cpu_offload=False
+                )
                 model = Qwen3VLForConditionalGeneration.from_pretrained(
                     CHANDRA_MODEL_PATH,
                     trust_remote_code=True,
-                    torch_dtype=torch.bfloat16,
+                    quantization_config=quantization_config,
                     device_map="cuda",
                     low_cpu_mem_usage=True,
                 ).eval()
