@@ -132,7 +132,7 @@ def unload_model():
 def load_chandra_model():
     """Load the Chandra OCR model into memory."""
     global model, processor, current_model_type
-    from transformers import AutoProcessor, AutoModelForImageTextToText
+    from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
 
     # If another model is loaded, unload it first
     if current_model_type is not None:
@@ -149,21 +149,22 @@ def load_chandra_model():
                 mem_before = torch.cuda.memory_allocated() / (1024**3)
                 print(f"  GPU memory before loading: {mem_before:.2f}GB")
 
-            # Chandra is based on Qwen3-VL, a vision-language model
+            # Chandra is based on Qwen3-VL, use the specific model class
             if DEVICE == "cuda":
                 print(f"  Loading Chandra model to GPU...")
-                model = AutoModelForImageTextToText.from_pretrained(
+                model = Qwen3VLForConditionalGeneration.from_pretrained(
                     CHANDRA_MODEL_PATH,
                     trust_remote_code=True,
                     torch_dtype=torch.bfloat16,
+                    device_map="cuda",
                     low_cpu_mem_usage=True,
-                ).to("cuda").eval()
+                ).eval()
                 # Verify model is on GPU
                 param_device = next(model.parameters()).device
                 print(f"  Model loaded to: {param_device}")
             else:
                 print(f"  Loading Chandra model to CPU...")
-                model = AutoModelForImageTextToText.from_pretrained(
+                model = Qwen3VLForConditionalGeneration.from_pretrained(
                     CHANDRA_MODEL_PATH,
                     trust_remote_code=True,
                     torch_dtype=torch.float32,
