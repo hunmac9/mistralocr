@@ -488,11 +488,13 @@ def background_process_job(job_id, temp_pdf_path, ocr_backend: OCRBackend, sessi
         try:
             with app.app_context():
                 download_url = url_for('download_file', session_id=session_id, filename=zip_filename, _external=True)
+                print(f"  Generated download URL: {download_url}")
         except RuntimeError as url_err:
             print(f"  Error generating download URL: {url_err}")
             _publish_status(job_id, 'error', {"error": f"Processing complete, but failed to generate download link: {url_err}. Please configure SERVER_NAME."})
             return
 
+        print(f"  Publishing done status with download_url for job {job_id}")
         _publish_status(job_id, 'done', {"download_url": download_url})
 
     except Exception as e:
@@ -622,17 +624,34 @@ def stream(job_id):
                     yield f"data: {json.dumps({'status': 'error', 'error': 'Invalid or expired job ID'})}\n\n"
             return # End stream
 
-        # Set timeout slightly longer than Gunicorn worker timeout (300s)
-        sse_timeout = 310
+        # Keep connection alive as long as job is running
+        # Only timeout if no activity for extended period (indicates something broke)
+        keepalive_interval = 25  # Send keepalive every 25s to prevent browser/proxy timeout
+        inactivity_timeout = 600  # Only timeout after 10 min of NO messages (model stuck/crashed)
+        last_message_time = time.time()
+
         try:
             while True:
-                message = q.get(timeout=sse_timeout) # Increased timeout
-                if message is None: # End of stream signal from worker
+                now = time.time()
+                time_since_last = now - last_message_time
+
+                # Only timeout if no messages received for a very long time
+                if time_since_last > inactivity_timeout:
+                    print(f"SSE stream inactivity timeout ({inactivity_timeout}s) for job {job_id} - model may be stuck")
+                    yield f"data: {json.dumps({'status': 'error', 'error': 'Processing timed out - no response from OCR model'})}\n\n"
                     break
-                yield f"data: {message}\n\n" # SSE format: data: <json_string>\n\n
-        except queue.Empty:
-            # Timeout occurred, client might have disconnected or worker is stuck
-            print(f"SSE stream timeout ({sse_timeout}s) for job {job_id}")
+
+                try:
+                    message = q.get(timeout=keepalive_interval)
+                    if message is None:  # End of stream signal from worker
+                        break
+                    last_message_time = time.time()  # Reset inactivity timer
+                    yield f"data: {message}\n\n"
+                except queue.Empty:
+                    # No message yet - send keepalive to prevent browser/proxy timeout
+                    yield f": keepalive\n\n"
+        except GeneratorExit:
+            print(f"SSE client disconnected for job {job_id}")
         finally:
             # Clean up the queue for this job_id when the client disconnects or stream ends
             with jobs_lock:
