@@ -43,6 +43,8 @@ current_backend = DEFAULT_BACKEND
 model_lock = threading.Lock()
 last_activity_time = time.time()
 unload_timer = None
+active_requests = 0  # Count of requests currently processing
+active_requests_lock = threading.Lock()
 
 # Device selection
 print(f"[GPU Debug] PyTorch version: {torch.__version__}")
@@ -339,6 +341,16 @@ def check_and_unload():
     """Check if idle timeout has passed and unload if so."""
     global last_activity_time, unload_timer
 
+    # Don't unload if there are active requests processing
+    with active_requests_lock:
+        if active_requests > 0:
+            print(f"Skipping unload check - {active_requests} active request(s)")
+            # Reschedule check for later
+            unload_timer = threading.Timer(IDLE_TIMEOUT, check_and_unload)
+            unload_timer.daemon = True
+            unload_timer.start()
+            return
+
     idle_duration = time.time() - last_activity_time
     if idle_duration >= IDLE_TIMEOUT:
         print(f"Idle timeout reached ({idle_duration:.1f}s >= {IDLE_TIMEOUT}s). Unloading models...")
@@ -509,6 +521,8 @@ def ocr():
 
     Returns JSON with OCR results in a format compatible with Mistral OCR response.
     """
+    global active_requests
+
     if 'file' not in request.files:
         return jsonify({"error": "No file provided"}), 400
 
@@ -528,6 +542,11 @@ def ocr():
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         file.save(tmp.name)
         tmp_path = Path(tmp.name)
+
+    # Track active request to prevent model unloading during processing
+    with active_requests_lock:
+        active_requests += 1
+        print(f"Active requests: {active_requests}")
 
     try:
         start_time = time.time()
@@ -581,6 +600,10 @@ def ocr():
         return jsonify({"error": str(e)}), 500
 
     finally:
+        # Decrement active requests counter
+        with active_requests_lock:
+            active_requests -= 1
+            print(f"Active requests: {active_requests}")
         try:
             tmp_path.unlink()
         except:
@@ -594,6 +617,8 @@ def ocr_stream():
 
     Uses newline-delimited JSON (NDJSON) to stream progress and results.
     """
+    global active_requests
+
     if 'file' not in request.files:
         return jsonify({"error": "No file provided"}), 400
 
@@ -615,6 +640,13 @@ def ocr_stream():
         tmp_path = Path(tmp.name)
 
     def generate():
+        global active_requests
+
+        # Track active request to prevent model unloading during processing
+        with active_requests_lock:
+            active_requests += 1
+            print(f"Active requests: {active_requests}")
+
         try:
             start_time = time.time()
 
@@ -697,6 +729,10 @@ def ocr_stream():
             yield json.dumps({"type": "error", "message": str(e)}) + "\n"
 
         finally:
+            # Decrement active requests counter
+            with active_requests_lock:
+                active_requests -= 1
+                print(f"Active requests: {active_requests}")
             try:
                 tmp_path.unlink()
             except:
