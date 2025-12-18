@@ -614,16 +614,6 @@ body {
   z-index: 1;
 }
 
-.outline-title {
-  font-size: 0.6rem;
-  font-weight: 600;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 0.5rem;
-  font-family: var(--mono);
-}
-
 .outline-entry {
   font-family: var(--mono);
   font-size: 0.65rem;
@@ -637,6 +627,18 @@ body {
 }
 
 .outline-entry:hover {
+  color: var(--accent);
+}
+
+.outline-entry.active {
+  color: var(--accent);
+  position: relative;
+}
+
+.outline-entry.active::before {
+  content: '›';
+  position: absolute;
+  left: -0.75rem;
   color: var(--accent);
 }
 
