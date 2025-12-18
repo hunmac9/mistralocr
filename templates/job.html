@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Processing - MistraLOCR</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%230c0c0c' width='100' height='100'/><text y='70' x='50' text-anchor='middle' font-size='60' fill='%23c8ff00'>O</text></svg>">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=8" />
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=9" />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -63,12 +63,26 @@
     </div>
   </main>
 
-  <!-- Log feed -->
-  <div class="log-feed" x-show="logs.length > 0">
+  <!-- Log feed (during processing) -->
+  <div class="log-feed" x-show="logs.length > 0 && !showPreview">
     <template x-for="(log, i) in logs.slice(-8)" :key="i">
       <div class="log-entry" :class="{ 'latest': i === logs.slice(-8).length - 1 }">
         <span class="log-time" x-text="log.time"></span>
         <span class="log-msg" x-text="log.message"></span>
+      </div>
+    </template>
+  </div>
+
+  <!-- Document outline (during preview) -->
+  <div class="doc-outline" x-show="showPreview && outline.length > 0">
+    <div class="outline-title">Outline</div>
+    <template x-for="(item, i) in outline" :key="i">
+      <div
+        class="outline-entry"
+        :class="'level-' + item.level"
+        @click="scrollToHeading(item.id)"
+      >
+        <span class="outline-text" x-text="item.text"></span>
       </div>
     </template>
   </div>
@@ -94,6 +108,7 @@ function jobStatus(jobId, initialStatus, initialDownloadUrl, initialError) {
     previewLoading: false,
     previewData: null,
     renderedHtml: '',
+    outline: [],
 
     get isProcessing() {
       return this.status === 'queued' || this.status === 'processing';
@@ -132,6 +147,53 @@ function jobStatus(jobId, initialStatus, initialDownloadUrl, initialError) {
       } else if (this.status === 'error') {
         this.currentMessage = 'Failed';
         this.addLog(this.errorMsg || 'An error occurred');
+      }
+    },
+
+    extractOutline(markdown) {
+      // Extract headers from markdown
+      const outline = [];
+      const lines = markdown.split('\n');
+      let headingCount = 0;
+
+      for (const line of lines) {
+        const match = line.match(/^(#{1,6})\s+(.+)$/);
+        if (match) {
+          const level = match[1].length;
+          let text = match[2].trim();
+          // Remove markdown formatting from text
+          text = text.replace(/\*\*(.+?)\*\*/g, '$1'); // bold
+          text = text.replace(/\*(.+?)\*/g, '$1'); // italic
+          text = text.replace(/`(.+?)`/g, '$1'); // code
+          text = text.replace(/\[(.+?)\]\(.+?\)/g, '$1'); // links
+          // Truncate long headers
+          if (text.length > 50) {
+            text = text.substring(0, 47) + '...';
+          }
+          const id = `heading-${headingCount++}`;
+          outline.push({ level, text, id });
+        }
+      }
+      return outline;
+    },
+
+    addHeadingIds(html, outline) {
+      // Add IDs to headings in the HTML for scrolling
+      let headingIndex = 0;
+      return html.replace(/<(h[1-6])([^>]*)>/g, (match, tag, attrs) => {
+        if (headingIndex < outline.length) {
+          const id = outline[headingIndex].id;
+          headingIndex++;
+          return `<${tag}${attrs} id="${id}">`;
+        }
+        return match;
+      });
+    },
+
+    scrollToHeading(id) {
+      const element = document.getElementById(id);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     },
 
@@ -206,8 +268,14 @@ function jobStatus(jobId, initialStatus, initialDownloadUrl, initialError) {
           return `![${alt}](${url})`;
         });
 
+        // Extract document outline before rendering
+        this.outline = this.extractOutline(markdown);
+
         // Render markdown to HTML
         let html = marked.parse(markdown);
+
+        // Add IDs to headings for scroll navigation
+        html = this.addHeadingIds(html, this.outline);
 
         // Render LaTeX math expressions with KaTeX
         html = this.renderMath(html);

@@ -599,6 +599,68 @@ body {
   flex: 1;
 }
 
+/* Document Outline */
+.doc-outline {
+  position: fixed;
+  bottom: 60px;
+  left: 0;
+  max-width: 280px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 0 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  z-index: 1;
+}
+
+.outline-title {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+  font-family: var(--mono);
+}
+
+.outline-entry {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0.2rem 0;
+}
+
+.outline-entry:hover {
+  color: var(--accent);
+}
+
+.outline-entry.level-1 {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.outline-entry.level-2 {
+  padding-left: 0.75rem;
+}
+
+.outline-entry.level-3 {
+  padding-left: 1.5rem;
+  font-size: 0.6rem;
+}
+
+.outline-entry.level-4,
+.outline-entry.level-5,
+.outline-entry.level-6 {
+  padding-left: 2.25rem;
+  font-size: 0.55rem;
+}
+
 /* Back Link */
 .back-link {
   font-size: 0.7rem;
@@ -990,5 +1052,9 @@ body {
 
   .markdown-body img {
     margin: 1rem 0;
+  }
+
+  .doc-outline {
+    display: none;
   }
 }
