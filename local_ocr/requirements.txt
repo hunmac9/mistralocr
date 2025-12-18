@@ -23,3 +23,6 @@ surya-ocr>=0.8.0
 # Requires transformers 5.0+ for native PaddleOCR-VL support
 transformers>=5.0.0rc1
 accelerate>=0.34.0
+
+# OlmOCR (7B VLM) - SOTA accuracy for complex documents
+olmocr>=0.4.0
