@@ -95,6 +95,8 @@ def load_surya():
 
             load_time = time.time() - start_time
             print(f"Surya OCR model loaded successfully in {load_time:.2f} seconds")
+            # Reset idle timer after long model loading
+            reset_idle_timer()
             return True
 
         except Exception as e:
@@ -208,6 +210,8 @@ def load_paddleocr_vl():
                 print(f"PaddleOCR-VL loaded in {load_time:.2f}s (using {mem_used:.2f}GB VRAM)")
             else:
                 print(f"PaddleOCR-VL loaded in {load_time:.2f}s")
+            # Reset idle timer after long model loading
+            reset_idle_timer()
             return True
 
         except Exception as e:
@@ -333,17 +337,19 @@ def reset_idle_timer():
 
 def check_and_unload():
     """Check if idle timeout has passed and unload if so."""
-    global last_activity_time
+    global last_activity_time, unload_timer
 
     idle_duration = time.time() - last_activity_time
     if idle_duration >= IDLE_TIMEOUT:
         print(f"Idle timeout reached ({idle_duration:.1f}s >= {IDLE_TIMEOUT}s). Unloading models...")
         unload_all_models()
+        unload_timer = None
     else:
         remaining = IDLE_TIMEOUT - idle_duration
-        timer = threading.Timer(remaining, check_and_unload)
-        timer.daemon = True
-        timer.start()
+        # Store timer in global so it can be cancelled by reset_idle_timer()
+        unload_timer = threading.Timer(remaining, check_and_unload)
+        unload_timer.daemon = True
+        unload_timer.start()
 
 
 def process_image(image: Image.Image, backend: str = None) -> str:
@@ -353,10 +359,15 @@ def process_image(image: Image.Image, backend: str = None) -> str:
     reset_idle_timer()
     backend = backend or current_backend
 
-    if backend == "paddleocr-vl":
-        return process_image_paddleocr(image)
-    else:  # surya (default)
-        return process_image_surya(image)
+    try:
+        if backend == "paddleocr-vl":
+            return process_image_paddleocr(image)
+        else:  # surya (default)
+            return process_image_surya(image)
+    finally:
+        # Reset timer after processing completes to ensure timeout
+        # doesn't fire during next page's inference
+        reset_idle_timer()
 
 
 def pdf_to_images(pdf_path: Path, dpi: int = 200) -> list[Image.Image]:
