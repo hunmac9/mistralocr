@@ -908,6 +908,33 @@ body {
   font-style: italic;
 }
 
+/* Math (KaTeX) styles */
+.markdown-body .katex {
+  font-size: 1em;
+  color: var(--text);
+}
+
+.markdown-body .katex-display {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.markdown-body .katex-display > .katex {
+  text-align: center;
+}
+
+.markdown-body .math-error {
+  color: var(--error);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  background: rgba(255, 59, 59, 0.1);
+  padding: 0.1rem 0.3rem;
+  border: 1px solid var(--error);
+}
+
 /* Responsive */
 @media (max-width: 640px) {
   .header {

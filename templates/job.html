@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Processing - MistraLOCR</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%230c0c0c' width='100' height='100'/><text y='70' x='50' text-anchor='middle' font-size='60' fill='%23c8ff00'>O</text></svg>">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=6" />
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=7" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
@@ -132,6 +134,43 @@ function jobStatus(jobId, initialStatus, initialDownloadUrl, initialError) {
       }
     },
 
+    renderMath(html) {
+      // Process display math first ($$...$$)
+      html = html.replace(/\$\$([\s\S]*?)\$\$/g, (match, tex) => {
+        try {
+          return katex.renderToString(tex.trim(), {
+            displayMode: true,
+            throwOnError: false,
+            trust: true
+          });
+        } catch (e) {
+          console.warn('KaTeX display math error:', e);
+          return `<span class="math-error">${match}</span>`;
+        }
+      });
+
+      // Process inline math ($...$) - but not $$
+      // Use a more careful regex to avoid matching currency or other $ uses
+      html = html.replace(/\$([^\$\n]+?)\$/g, (match, tex) => {
+        // Skip if it looks like currency (e.g., $100)
+        if (/^\d/.test(tex.trim())) {
+          return match;
+        }
+        try {
+          return katex.renderToString(tex.trim(), {
+            displayMode: false,
+            throwOnError: false,
+            trust: true
+          });
+        } catch (e) {
+          console.warn('KaTeX inline math error:', e);
+          return `<span class="math-error">${match}</span>`;
+        }
+      });
+
+      return html;
+    },
+
     async loadPreview() {
       if (this.previewLoading) return;
       this.previewLoading = true;
@@ -167,7 +206,12 @@ function jobStatus(jobId, initialStatus, initialDownloadUrl, initialError) {
         });
 
         // Render markdown to HTML
-        this.renderedHtml = marked.parse(markdown);
+        let html = marked.parse(markdown);
+
+        // Render LaTeX math expressions with KaTeX
+        html = this.renderMath(html);
+
+        this.renderedHtml = html;
         this.showPreview = true;
       } catch (e) {
         console.error('Preview load failed:', e);
