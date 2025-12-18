@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Processing - MistraLOCR</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%230c0c0c' width='100' height='100'/><text y='70' x='50' text-anchor='middle' font-size='60' fill='%23c8ff00'>O</text></svg>">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=5" />
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=6" />
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body>
@@ -21,8 +22,8 @@
   </header>
 
   <!-- Center content -->
-  <main class="job-center">
-    <div class="job-status-box">
+  <main class="job-center" :class="{ 'has-preview': showPreview }">
+    <div class="job-status-box" x-show="!showPreview">
       <!-- Status symbol -->
       <div class="status-symbol" :class="status">
         <span x-text="statusIcon"></span>
@@ -31,17 +32,30 @@
       <!-- Current message -->
       <div class="current-message" x-text="currentMessage"></div>
 
-      <!-- Download button -->
-      <a
-        x-show="status === 'done'"
-        x-transition
-        :href="downloadUrl"
-        class="download-btn"
-      >Download Result</a>
+      <!-- Action buttons -->
+      <div x-show="status === 'done'" x-transition class="action-buttons">
+        <button @click="loadPreview()" class="preview-btn" :disabled="previewLoading">
+          <span x-show="!previewLoading">Preview</span>
+          <span x-show="previewLoading">Loading...</span>
+        </button>
+        <a :href="downloadUrl" class="download-btn">Download</a>
+      </div>
 
       <!-- Error display -->
       <div x-show="status === 'error'" x-transition class="error-box">
         <span x-text="errorMsg"></span>
+      </div>
+    </div>
+
+    <!-- Preview Panel -->
+    <div x-show="showPreview" x-transition class="preview-panel">
+      <div class="preview-header">
+        <button @click="showPreview = false" class="close-preview-btn">&larr; Back</button>
+        <div class="preview-title">Preview</div>
+        <a :href="downloadUrl" class="download-btn small">Download</a>
+      </div>
+      <div class="preview-content">
+        <div class="markdown-body" x-html="renderedHtml"></div>
       </div>
     </div>
   </main>
@@ -72,6 +86,11 @@ function jobStatus(jobId, initialStatus, initialDownloadUrl, initialError) {
     logs: [],
     eventSource: null,
     startTime: Date.now(),
+    // Preview state
+    showPreview: false,
+    previewLoading: false,
+    previewData: null,
+    renderedHtml: '',
 
     get isProcessing() {
       return this.status === 'queued' || this.status === 'processing';
@@ -110,6 +129,51 @@ function jobStatus(jobId, initialStatus, initialDownloadUrl, initialError) {
       } else if (this.status === 'error') {
         this.currentMessage = 'Failed';
         this.addLog(this.errorMsg || 'An error occurred');
+      }
+    },
+
+    async loadPreview() {
+      if (this.previewLoading) return;
+      this.previewLoading = true;
+
+      try {
+        const response = await fetch(`/job/${jobId}/preview`);
+        if (!response.ok) {
+          throw new Error('Failed to load preview');
+        }
+        this.previewData = await response.json();
+
+        // Configure marked for safe HTML rendering
+        marked.setOptions({
+          breaks: true,
+          gfm: true
+        });
+
+        // Process markdown - replace image references with actual URLs
+        let markdown = this.previewData.markdown;
+
+        // Replace image references like ![Image X.](img-1.webp) with full URLs
+        const imageMap = {};
+        this.previewData.images.forEach(img => {
+          imageMap[img.filename] = img.url;
+        });
+
+        // Replace all image references
+        markdown = markdown.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
+          // Handle both /img-1.webp and img-1.webp formats
+          const filename = src.startsWith('/') ? src.slice(1) : src;
+          const url = imageMap[filename] || src;
+          return `![${alt}](${url})`;
+        });
+
+        // Render markdown to HTML
+        this.renderedHtml = marked.parse(markdown);
+        this.showPreview = true;
+      } catch (e) {
+        console.error('Preview load failed:', e);
+        alert('Failed to load preview');
+      } finally {
+        this.previewLoading = false;
       }
     },
 

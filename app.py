@@ -732,6 +732,63 @@ def job_status_json(job_id):
             'error': job.get('error')
         })
 
+
+@app.route('/job/<job_id>/preview')
+def job_preview(job_id):
+    """Returns markdown content and image URLs for preview."""
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if not job:
+            return jsonify({'error': 'Invalid or expired job ID'}), 404
+        if job.get('status') != 'done':
+            return jsonify({'error': 'Job not yet complete'}), 400
+        session_id = job.get('session_id')
+
+    if not session_id:
+        return jsonify({'error': 'Session ID not found'}), 500
+
+    # Find the output directory and markdown file
+    session_output_dir = OUTPUT_FOLDER / session_id
+    if not session_output_dir.exists():
+        return jsonify({'error': 'Output directory not found'}), 404
+
+    # Find subdirectories (there should be one for the processed PDF)
+    pdf_dirs = [d for d in session_output_dir.iterdir() if d.is_dir()]
+    if not pdf_dirs:
+        return jsonify({'error': 'No processed files found'}), 404
+
+    pdf_dir = pdf_dirs[0]  # Take the first (usually only) PDF output directory
+    pdf_base = pdf_dir.name
+
+    # Find markdown file
+    md_files = list(pdf_dir.glob('*.md'))
+    if not md_files:
+        return jsonify({'error': 'Markdown file not found'}), 404
+
+    md_file = md_files[0]
+    try:
+        with open(md_file, 'r', encoding='utf-8') as f:
+            markdown_content = f.read()
+    except Exception as e:
+        return jsonify({'error': f'Failed to read markdown: {e}'}), 500
+
+    # Find all images
+    image_files = sorted(pdf_dir.glob('*.webp'))
+    images = []
+    for img_file in image_files:
+        img_url = url_for('view_image', session_id=session_id, pdf_base=pdf_base, filename=img_file.name)
+        images.append({
+            'filename': img_file.name,
+            'url': img_url
+        })
+
+    return jsonify({
+        'markdown': markdown_content,
+        'images': images,
+        'pdf_base': pdf_base,
+        'session_id': session_id
+    })
+
 # --- API Blueprint Registration ---
 from api import api_bp
 
