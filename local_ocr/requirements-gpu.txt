@@ -18,3 +18,6 @@ numpy>=1.26.0
 
 # Surya OCR (~300M params) - CPU and GPU friendly
 surya-ocr>=0.8.0
+
+# OlmOCR (7B VLM) - SOTA accuracy for complex documents
+olmocr>=0.4.0
