@@ -337,7 +337,7 @@ class LocalOCRBackend(OCRBackend):
             else:
                 raise RuntimeError("Local OCR server is not available")
 
-        backend_display = "PaddleOCR-VL" if self.local_backend == "paddleocr-vl" else "Surya"
+        backend_display = {"paddleocr-vl": "PaddleOCR-VL", "olmocr": "OlmOCR"}.get(self.local_backend, "Surya")
         self._report(on_progress, f"Sending to {backend_display}")
         print(f"  [Local OCR] Processing {pdf_path.name} with {backend_display}...")
         start_time = time.time()
