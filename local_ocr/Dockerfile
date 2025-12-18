@@ -21,8 +21,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Clean up
     && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user
-RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+# Create a non-root user with home directory
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup --home /home/appuser appuser
 
 # Copy requirements first for caching
 COPY requirements.txt .
@@ -46,7 +46,7 @@ USER appuser
 ENV PORT=8000
 ENV HOST=0.0.0.0
 ENV IDLE_TIMEOUT=300
-# Note: Only Surya OCR is supported
+ENV HOME=/home/appuser
 # Hugging Face cache directory
 ENV HF_HOME=/home/appuser/.cache/huggingface
 ENV TRANSFORMERS_CACHE=/home/appuser/.cache/huggingface
