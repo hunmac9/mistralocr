@@ -20,5 +20,5 @@ numpy>=1.26.0
 surya-ocr>=0.8.0
 
 # OlmOCR (7B VLM) - SOTA accuracy for complex documents
-# Note: olmocr brings in transformers and accelerate as dependencies
 olmocr>=0.4.0
+accelerate>=0.34.0
