@@ -67,6 +67,7 @@ else:
 def load_surya():
     """Load the Surya OCR model into memory (~300M params)."""
     global surya_model
+    from surya.foundation import FoundationPredictor
     from surya.recognition import RecognitionPredictor
     from surya.detection import DetectionPredictor
 
@@ -81,12 +82,15 @@ def load_surya():
         start_time = time.time()
 
         try:
+            # surya-ocr 0.17+ API: FoundationPredictor shared across predictors
+            foundation_predictor = FoundationPredictor()
             det_predictor = DetectionPredictor()
-            rec_predictor = RecognitionPredictor()
+            rec_predictor = RecognitionPredictor(foundation_predictor)
 
             surya_model = {
                 "detection": det_predictor,
-                "recognition": rec_predictor
+                "recognition": rec_predictor,
+                "foundation": foundation_predictor  # Keep reference to prevent GC
             }
 
             load_time = time.time() - start_time
