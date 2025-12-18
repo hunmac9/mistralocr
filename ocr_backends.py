@@ -375,6 +375,10 @@ class LocalOCRBackend(OCRBackend):
                             page = msg.get('page', 0)
                             total = msg.get('total', 0)
                             self._report(on_progress, f"Page {page}/{total}")
+                        elif msg_type == 'page_complete':
+                            page = msg.get('page', 0)
+                            total = msg.get('total', 0)
+                            self._report(on_progress, f"Completed page {page}/{total}")
                         elif msg_type == 'result':
                             result = msg
                         elif msg_type == 'error':

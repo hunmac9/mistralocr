@@ -643,6 +643,14 @@ def ocr_stream():
 
                 markdown_content = process_image(img, backend=backend)
 
+                # Send page completion message to reset client timeouts
+                yield json.dumps({
+                    "type": "page_complete",
+                    "page": page_num,
+                    "total": total_pages,
+                    "message": f"Completed page {page_num}/{total_pages}"
+                }) + "\n"
+
                 page_data = {
                     "index": page_idx,
                     "markdown": markdown_content,
