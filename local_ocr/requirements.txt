@@ -3,9 +3,10 @@ Flask==3.1.0
 gunicorn==23.0.0
 
 # PyTorch (CPU-only version - GPU version installed separately in Dockerfile.gpu)
+# surya-ocr 0.8.x requires torch>=2.7.0
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.5.1+cpu
-torchvision==0.20.1+cpu
+torch>=2.7.0
+torchvision>=0.22.0
 
 # Image processing
 Pillow>=10.0.0
@@ -19,5 +20,5 @@ numpy>=1.26.0
 # Surya OCR (~300M params) - CPU and GPU friendly
 surya-ocr>=0.8.0
 
-# Transformers - pinned to version with QuantizedCacheConfig support
-transformers>=4.45.0
+# Transformers - surya-ocr 0.8.x requires >=4.56.1
+transformers>=4.56.1
