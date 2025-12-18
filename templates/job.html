@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Processing - MistraLOCR</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%230c0c0c' width='100' height='100'/><text y='70' x='50' text-anchor='middle' font-size='60' fill='%23c8ff00'>O</text></svg>">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=11" />
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=12" />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -98,10 +98,13 @@ function jobStatus(jobId, initialStatus, initialDownloadUrl, initialError) {
     status: initialStatus,
     downloadUrl: initialDownloadUrl,
     errorMsg: initialError,
-    currentMessage: initialStatus === 'queued' ? 'Waiting in queue' : 'Connecting...',
+    currentMessage: initialStatus === 'queued' ? 'Waiting in queue' : (initialStatus === 'processing' ? 'Processing...' : 'Connecting...'),
     logs: [],
     eventSource: null,
     startTime: Date.now(),
+    reconnectAttempts: 0,
+    maxReconnectAttempts: 3,
+    pollInterval: null,
     // Preview state
     showPreview: false,
     previewLoading: false,
@@ -202,32 +205,56 @@ function jobStatus(jobId, initialStatus, initialDownloadUrl, initialError) {
 
     setupScrollTracking() {
       const previewContent = document.querySelector('.preview-content');
-      if (!previewContent) return;
+      if (!previewContent) {
+        console.log('Preview content not found for scroll tracking');
+        return;
+      }
+
+      // Verify at least one heading exists in the DOM
+      if (this.outline.length > 0) {
+        const firstHeading = document.getElementById(this.outline[0].id);
+        if (!firstHeading) {
+          // Headings not in DOM yet, retry after a short delay
+          console.log('Headings not yet in DOM, retrying...');
+          setTimeout(() => this.setupScrollTracking(), 50);
+          return;
+        }
+      }
 
       this.scrollHandler = () => {
-        const scrollTop = previewContent.scrollTop;
-        const offset = 100; // Offset from top to consider "active"
+        const offset = 120; // Offset from top to consider "active"
+        const containerRect = previewContent.getBoundingClientRect();
 
         let activeId = null;
+        let firstVisibleId = null;
+
         for (const item of this.outline) {
           const el = document.getElementById(item.id);
           if (el) {
             const rect = el.getBoundingClientRect();
-            const containerRect = previewContent.getBoundingClientRect();
             const relativeTop = rect.top - containerRect.top;
 
+            // Track the last heading that's scrolled past the offset line
             if (relativeTop <= offset) {
               activeId = item.id;
+            }
+
+            // Track the first heading that's visible in the container
+            if (firstVisibleId === null && relativeTop >= 0 && relativeTop < containerRect.height) {
+              firstVisibleId = item.id;
             }
           }
         }
 
-        if (activeId !== this.activeHeadingId) {
-          this.activeHeadingId = activeId;
+        // Use activeId if we have one, otherwise use the first visible heading
+        const newActiveId = activeId || firstVisibleId || (this.outline.length > 0 ? this.outline[0].id : null);
+
+        if (newActiveId !== this.activeHeadingId) {
+          this.activeHeadingId = newActiveId;
         }
       };
 
-      previewContent.addEventListener('scroll', this.scrollHandler);
+      previewContent.addEventListener('scroll', this.scrollHandler, { passive: true });
       // Set initial active heading
       this.scrollHandler();
     },
@@ -378,8 +405,13 @@ function jobStatus(jobId, initialStatus, initialDownloadUrl, initialError) {
         this.showPreview = true;
 
         // Setup scroll tracking after DOM updates
+        // Use double $nextTick + requestAnimationFrame to ensure x-html content is fully rendered
         this.$nextTick(() => {
-          this.setupScrollTracking();
+          requestAnimationFrame(() => {
+            this.$nextTick(() => {
+              this.setupScrollTracking();
+            });
+          });
         });
       } catch (e) {
         console.error('Preview load failed:', e);
@@ -390,11 +422,21 @@ function jobStatus(jobId, initialStatus, initialDownloadUrl, initialError) {
     },
 
     connect(jobId) {
+      if (this.eventSource) {
+        this.eventSource.close();
+      }
+
       this.eventSource = new EventSource(`/stream/${jobId}`);
+
+      this.eventSource.onopen = () => {
+        // Connection established - reset reconnect counter
+        this.reconnectAttempts = 0;
+      };
 
       this.eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
         this.status = data.status;
+        this.reconnectAttempts = 0;  // Reset on successful message
 
         if (data.message) {
           this.currentMessage = data.message;
@@ -415,16 +457,26 @@ function jobStatus(jobId, initialStatus, initialDownloadUrl, initialError) {
       };
 
       this.eventSource.onerror = () => {
-        // Don't immediately show error - start polling instead
         this.eventSource.close();
-        this.addLog('Connection interrupted, polling for status...');
-        this.currentMessage = 'Reconnecting...';
-        this.startPolling(jobId);
+        this.reconnectAttempts++;
+
+        if (this.reconnectAttempts <= this.maxReconnectAttempts) {
+          // Try to reconnect with exponential backoff
+          const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 5000);
+          this.currentMessage = `Reconnecting (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`;
+          this.addLog(`Connection lost, reconnecting in ${delay/1000}s...`);
+          setTimeout(() => this.connect(jobId), delay);
+        } else {
+          // Max retries exceeded - fall back to polling
+          this.addLog('SSE connection failed, switching to polling...');
+          this.currentMessage = 'Processing...';
+          this.startPolling(jobId);
+        }
       };
     },
 
     startPolling(jobId) {
-      // Poll every 5 seconds until job completes or errors
+      // Poll every 3 seconds until job completes or errors
       this.pollInterval = setInterval(async () => {
         try {
           const response = await fetch(`/job/${jobId}/status`);
@@ -443,13 +495,19 @@ function jobStatus(jobId, initialStatus, initialDownloadUrl, initialError) {
             this.addLog(this.errorMsg);
             clearInterval(this.pollInterval);
           } else if (data.status === 'processing') {
-            this.currentMessage = 'Processing...';
+            // Use actual progress message if available
+            if (data.message && data.message !== this.currentMessage) {
+              this.currentMessage = data.message;
+              this.addLog(data.message);
+            } else if (!data.message) {
+              this.currentMessage = 'Processing...';
+            }
           }
         } catch (e) {
           // Keep polling even if one request fails
           console.log('Poll failed, retrying...', e);
         }
-      }, 5000);
+      }, 3000);  // Poll every 3 seconds for more responsive updates
     }
   }
 }

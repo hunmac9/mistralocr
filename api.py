@@ -352,20 +352,35 @@ def stream_job_status(job_id):
             return
 
         sse_timeout = 310
+        job_completed = False
         try:
             while True:
                 message = q.get(timeout=sse_timeout)
                 if message is None:
+                    job_completed = True
                     break
                 yield f"data: {message}\n\n"
         except queue.Empty:
             pass
+        except GeneratorExit:
+            # Client disconnected - preserve queue for reconnection
+            pass
         finally:
-            with jobs_lock:
-                if job_id in job_queues:
-                    del job_queues[job_id]
+            # Only clean up queue if job completed normally
+            if job_completed:
+                with jobs_lock:
+                    if job_id in job_queues:
+                        del job_queues[job_id]
 
-    return Response(event_stream(), mimetype="text/event-stream")
+    return Response(
+        event_stream(),
+        mimetype="text/event-stream",
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive',
+        }
+    )
 
 
 @api_bp.route('/jobs/<job_id>/result', methods=['GET'])

@@ -663,6 +663,17 @@ body {
   font-size: 0.55rem;
 }
 
+/* Active outline entry (must come after level styles to override color) */
+.outline-entry.active,
+.outline-entry.level-1.active,
+.outline-entry.level-2.active,
+.outline-entry.level-3.active,
+.outline-entry.level-4.active,
+.outline-entry.level-5.active,
+.outline-entry.level-6.active {
+  color: var(--accent) !important;
+}
+
 /* Back Link */
 .back-link {
   font-size: 0.7rem;

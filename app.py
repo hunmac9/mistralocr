@@ -344,6 +344,8 @@ def _publish_status(job_id, status, data=None, message=None):
     with jobs_lock:
         if job_id not in jobs: return # Job might have been cancelled or timed out
         jobs[job_id]['status'] = status
+        if message:
+            jobs[job_id]['message'] = message  # Store message for polling fallback
         if data:
             jobs[job_id].update(data)
 
@@ -618,6 +620,7 @@ def stream(job_id):
         inactivity_timeout = 600  # Only timeout after 10 min of NO messages (model stuck/crashed)
         last_message_time = time.time()
 
+        job_completed = False
         try:
             while True:
                 now = time.time()
@@ -632,6 +635,7 @@ def stream(job_id):
                 try:
                     message = q.get(timeout=keepalive_interval)
                     if message is None:  # End of stream signal from worker
+                        job_completed = True
                         break
                     last_message_time = time.time()  # Reset inactivity timer
                     yield f"data: {message}\n\n"
@@ -639,17 +643,25 @@ def stream(job_id):
                     # No message yet - send keepalive to prevent browser/proxy timeout
                     yield f": keepalive\n\n"
         except GeneratorExit:
-            print(f"SSE client disconnected for job {job_id}")
+            # Client disconnected - DON'T delete the queue so reconnection can work
+            print(f"SSE client disconnected for job {job_id} (queue preserved for reconnection)")
         finally:
-            # Clean up the queue for this job_id when the client disconnects or stream ends
-            with jobs_lock:
-                if job_id in job_queues:
-                    del job_queues[job_id]
-                    print(f"Cleaned up SSE queue for job {job_id}")
-                # Optionally clean up the job entry itself after a delay?
-                # For now, keep job entry for potential later access via job_status page reload
+            # Only clean up queue if job completed normally - preserve for reconnection attempts
+            if job_completed:
+                with jobs_lock:
+                    if job_id in job_queues:
+                        del job_queues[job_id]
+                        print(f"Cleaned up SSE queue for completed job {job_id}")
 
-    return Response(event_stream(), mimetype="text/event-stream")
+    return Response(
+        event_stream(),
+        mimetype="text/event-stream",
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',  # Disable nginx/proxy buffering
+            'Connection': 'keep-alive',
+        }
+    )
 
 
 # --- Route for serving images ---
@@ -728,6 +740,7 @@ def job_status_json(job_id):
             return jsonify({'status': 'error', 'error': 'Invalid or expired job ID'}), 404
         return jsonify({
             'status': job.get('status'),
+            'message': job.get('message'),  # Include current progress message
             'download_url': job.get('download_url'),
             'error': job.get('error')
         })
