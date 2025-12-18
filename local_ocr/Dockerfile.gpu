@@ -1,5 +1,5 @@
 # Dockerfile for Local OCR service with GPU support
-# Supports: Surya OCR (~300M params), PaddleOCR-VL (0.9B params), and OlmOCR (7B params)
+# Supports: Surya OCR (~300M params), PaddleOCR-VL (0.9B params)
 
 FROM ubuntu:22.04
 
@@ -15,7 +15,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     libmupdf-dev \
     mupdf-tools \
-    poppler-utils \
     build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/* \

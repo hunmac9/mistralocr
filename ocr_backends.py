@@ -222,8 +222,6 @@ class LocalOCRBackend(OCRBackend):
     def get_name(self) -> str:
         if self.local_backend == "paddleocr-vl":
             return "Local OCR (PaddleOCR-VL)"
-        elif self.local_backend == "olmocr":
-            return "Local OCR (OlmOCR)"
         return "Local OCR (Surya)"
 
     def _is_container_running(self) -> bool:
@@ -337,7 +335,7 @@ class LocalOCRBackend(OCRBackend):
             else:
                 raise RuntimeError("Local OCR server is not available")
 
-        backend_display = {"paddleocr-vl": "PaddleOCR-VL", "olmocr": "OlmOCR"}.get(self.local_backend, "Surya")
+        backend_display = "PaddleOCR-VL" if self.local_backend == "paddleocr-vl" else "Surya"
         self._report(on_progress, f"Sending to {backend_display}")
         print(f"  [Local OCR] Processing {pdf_path.name} with {backend_display}...")
         start_time = time.time()
@@ -432,7 +430,7 @@ def get_ocr_backend(
     Factory function to get the appropriate OCR backend.
 
     Args:
-        backend_type: One of "auto", "local", "surya", "paddleocr-vl", "olmocr", or "mistral"
+        backend_type: One of "auto", "local", "surya", "paddleocr-vl", or "mistral"
         mistral_api_key: API key for Mistral (required if backend_type is "mistral")
         local_server_url: URL of local OCR server
         **kwargs: Additional arguments passed to backend constructor
@@ -448,10 +446,6 @@ def get_ocr_backend(
         if not mistral_api_key:
             raise ValueError("Mistral API key required for Mistral backend")
         return MistralOCRBackend(api_key=mistral_api_key)
-
-    elif backend_type == "olmocr":
-        # Use OlmOCR on the local server (7B params FP8)
-        return LocalOCRBackend(server_url=local_server_url, local_backend="olmocr", **kwargs)
 
     elif backend_type == "paddleocr-vl":
         # Use PaddleOCR-VL on the local server

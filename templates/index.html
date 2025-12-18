@@ -38,16 +38,6 @@
         <span class="toggle-label">PaddleOCR</span>
         <span class="toggle-status {% if local_ocr_available %}on{% elif local_ocr_auto_start %}idle{% else %}off{% endif %}"></span>
       </button>
-      <button
-        type="button"
-        class="toggle-btn"
-        :class="{ active: backend === 'olmocr' }"
-        @click="backend = 'olmocr'"
-        {% if not local_ocr_available and not local_ocr_auto_start %}disabled{% endif %}
-      >
-        <span class="toggle-label">OlmOCR</span>
-        <span class="toggle-status {% if local_ocr_available %}on{% elif local_ocr_auto_start %}idle{% else %}off{% endif %}"></span>
-      </button>
       {% if has_mistral_key %}
       <button
         type="button"

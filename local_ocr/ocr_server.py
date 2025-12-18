@@ -5,10 +5,9 @@
 """
 Local OCR Server with Multiple Backends.
 
-This server provides a REST API for OCR processing with three backend options:
+This server provides a REST API for OCR processing with two backend options:
 - Surya OCR (~300M params) - Fast, CPU and GPU friendly
 - PaddleOCR-VL (0.9B params) - SOTA accuracy, handles tables/formulas/charts
-- OlmOCR (7B params FP8) - State-of-the-art accuracy, LaTeX equations, complex documents
 
 It implements lazy loading and automatic unloading to minimize memory usage when idle.
 """
@@ -40,8 +39,6 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_UPLOAD_MB * 1024 * 1024
 surya_model = None
 paddleocr_model = None
 paddleocr_processor = None
-olmocr_model = None
-olmocr_processor = None
 current_backend = DEFAULT_BACKEND
 model_lock = threading.Lock()
 last_activity_time = time.time()
@@ -238,165 +235,6 @@ def unload_paddleocr_vl():
         paddleocr_processor = None
 
 
-# ============================================================================
-# OlmOCR Backend
-# ============================================================================
-
-def load_olmocr():
-    """Load the OlmOCR model (7B params FP8) via transformers."""
-    global olmocr_model, olmocr_processor
-    from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
-
-    if olmocr_model is not None:
-        return True
-
-    with model_lock:
-        if olmocr_model is not None:
-            return True
-
-        print("Loading OlmOCR model (7B params FP8)...")
-        start_time = time.time()
-
-        try:
-            olmocr_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-                "allenai/olmOCR-2-7B-1025-FP8",
-                device_map="auto"
-            ).eval()
-
-            olmocr_processor = AutoProcessor.from_pretrained(
-                "Qwen/Qwen2.5-VL-7B-Instruct"
-            )
-
-            load_time = time.time() - start_time
-            if DEVICE == "cuda":
-                mem_used = torch.cuda.memory_allocated() / (1024**3)
-                print(f"OlmOCR loaded in {load_time:.2f}s (using {mem_used:.2f}GB VRAM)")
-            else:
-                print(f"OlmOCR loaded in {load_time:.2f}s")
-            return True
-
-        except Exception as e:
-            print(f"Error loading OlmOCR model: {e}")
-            import traceback
-            traceback.print_exc()
-            olmocr_model = None
-            olmocr_processor = None
-            return False
-
-
-def unload_olmocr():
-    """Unload the OlmOCR model from memory."""
-    global olmocr_model, olmocr_processor
-
-    with model_lock:
-        if olmocr_model is None:
-            return
-
-        if DEVICE == "cuda":
-            mem_before = torch.cuda.memory_allocated() / (1024**3)
-            print(f"Unloading OlmOCR (using {mem_before:.2f}GB)...")
-        else:
-            print("Unloading OlmOCR...")
-
-        del olmocr_model
-        del olmocr_processor
-        olmocr_model = None
-        olmocr_processor = None
-
-
-def process_pdf_page_olmocr(pdf_path: Path, page_num: int) -> str:
-    """Process a single PDF page with OlmOCR.
-
-    Uses olmocr's rendering and prompts for accurate document conversion.
-    Page numbers are 1-indexed as per olmocr convention.
-    """
-    global olmocr_model, olmocr_processor
-    from olmocr.data.renderpdf import render_pdf_to_base64png
-    from olmocr.prompts import build_no_anchoring_v4_yaml_prompt
-
-    if olmocr_model is None:
-        if not load_olmocr():
-            raise RuntimeError("Failed to load OlmOCR model")
-
-    with model_lock:
-        print(f"    [OlmOCR] Processing page {page_num}...")
-        gen_start = time.time()
-
-        # Render PDF page using olmocr's renderer (1288px longest dimension)
-        image_base64 = render_pdf_to_base64png(str(pdf_path), page_num, target_longest_image_dim=1288)
-
-        # Build the prompt using olmocr's official prompt
-        prompt = build_no_anchoring_v4_yaml_prompt()
-
-        # Format as chat message (OpenAI vision format)
-        messages = [{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_base64}"}}
-            ]
-        }]
-
-        # Apply chat template
-        text = olmocr_processor.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
-
-        # Decode image for processor
-        main_image = Image.open(io.BytesIO(base64.b64decode(image_base64)))
-
-        # Prepare inputs
-        inputs = olmocr_processor(
-            text=[text],
-            images=[main_image],
-            padding=True,
-            return_tensors="pt",
-        )
-        inputs = {key: value.to(olmocr_model.device) for (key, value) in inputs.items()}
-
-        # Generate (parameters from olmocr pipeline)
-        with torch.inference_mode():
-            output = olmocr_model.generate(
-                **inputs,
-                temperature=0.1,
-                max_new_tokens=8000,
-                do_sample=True,
-            )
-
-        # Decode - trim input tokens
-        prompt_length = inputs["input_ids"].shape[1]
-        new_tokens = output[:, prompt_length:]
-        text_output = olmocr_processor.tokenizer.batch_decode(
-            new_tokens, skip_special_tokens=True
-        )[0]
-
-        # Parse output - extract markdown from YAML frontmatter format
-        result = parse_olmocr_output(text_output)
-
-        print(f"    [OlmOCR] Inference completed in {time.time() - gen_start:.2f}s")
-
-    return result.strip()
-
-
-def parse_olmocr_output(text: str) -> str:
-    """Parse OlmOCR output, extracting markdown content from YAML frontmatter.
-
-    OlmOCR outputs: ---\nyaml_header\n---\nmarkdown_content
-    """
-    if not text.startswith("---"):
-        return text.strip()
-
-    # Find the closing --- delimiter
-    try:
-        first_delim = text.index("---")
-        second_delim = text.index("---", first_delim + 3)
-        markdown_content = text[second_delim + 3:].strip()
-        return markdown_content
-    except (ValueError, IndexError):
-        # If parsing fails, return original text
-        return text.strip()
-
-
 def process_image_paddleocr(image: Image.Image) -> str:
     """Process a single image with PaddleOCR-VL."""
     global paddleocr_model, paddleocr_processor
@@ -460,7 +298,6 @@ def unload_all_models():
     print("Unloading all models...")
     unload_surya()
     unload_paddleocr_vl()
-    unload_olmocr()
 
     # Force garbage collection
     gc.collect()
@@ -506,18 +343,13 @@ def check_and_unload():
 
 
 def process_image(image: Image.Image, backend: str = None) -> str:
-    """Process a single image with the specified or default OCR backend.
-
-    Note: OlmOCR requires PDF path and page number, use process_pdf_page_olmocr() instead.
-    """
+    """Process a single image with the specified or default OCR backend."""
     global current_backend
 
     reset_idle_timer()
     backend = backend or current_backend
 
-    if backend == "olmocr":
-        raise ValueError("OlmOCR requires PDF path, use process_pdf_page_olmocr() instead")
-    elif backend == "paddleocr-vl":
+    if backend == "paddleocr-vl":
         return process_image_paddleocr(image)
     else:  # surya (default)
         return process_image_surya(image)
@@ -561,7 +393,7 @@ def health():
 def status():
     """Get model status."""
     return jsonify({
-        "model_loaded": surya_model is not None or paddleocr_model is not None or olmocr_model is not None,
+        "model_loaded": surya_model is not None or paddleocr_model is not None,
         "current_backend": current_backend,
         "device": DEVICE,
         "idle_timeout": IDLE_TIMEOUT,
@@ -570,7 +402,6 @@ def status():
         "backends": {
             "surya": {"loaded": surya_model is not None},
             "paddleocr-vl": {"loaded": paddleocr_model is not None},
-            "olmocr": {"loaded": olmocr_model is not None},
         }
     })
 
@@ -591,12 +422,6 @@ def list_models():
                 "name": "PaddleOCR-VL",
                 "description": "PaddleOCR-VL (0.9B params) - SOTA accuracy, tables/formulas/charts",
                 "loaded": paddleocr_model is not None
-            },
-            {
-                "id": "olmocr",
-                "name": "OlmOCR",
-                "description": "OlmOCR (7B params FP8) - SOTA accuracy, LaTeX/tables/complex docs",
-                "loaded": olmocr_model is not None
             }
         ],
         "current": current_backend
@@ -608,11 +433,10 @@ def get_backend():
     """Get current OCR backend."""
     return jsonify({
         "current": current_backend,
-        "available": ["surya", "paddleocr-vl", "olmocr"],
+        "available": ["surya", "paddleocr-vl"],
         "loaded": {
             "surya": surya_model is not None,
             "paddleocr-vl": paddleocr_model is not None,
-            "olmocr": olmocr_model is not None,
         }
     })
 
@@ -624,7 +448,7 @@ def set_backend():
     data = request.get_json() or {}
     backend = data.get('backend', 'surya')
 
-    if backend not in ["surya", "paddleocr-vl", "olmocr"]:
+    if backend not in ["surya", "paddleocr-vl"]:
         return jsonify({"error": f"Unknown backend: {backend}"}), 400
 
     current_backend = backend
@@ -637,10 +461,7 @@ def load():
     """Explicitly load the current backend's model."""
     backend = request.get_json().get('backend', current_backend) if request.is_json else current_backend
 
-    if backend == "olmocr":
-        success = load_olmocr()
-        model_name = "OlmOCR"
-    elif backend == "paddleocr-vl":
+    if backend == "paddleocr-vl":
         success = load_paddleocr_vl()
         model_name = "PaddleOCR-VL"
     else:
@@ -669,7 +490,7 @@ def ocr():
     Accepts multipart/form-data with:
     - file: The PDF or image file to process
     - include_images: Whether to include base64 images in response - default: true
-    - backend: OCR backend to use - "surya", "paddleocr-vl", or "olmocr" (optional, uses current default)
+    - backend: OCR backend to use - "surya" or "paddleocr-vl" (optional, uses current default)
 
     Returns JSON with OCR results in a format compatible with Mistral OCR response.
     """
@@ -684,14 +505,10 @@ def ocr():
     backend = request.form.get('backend', current_backend)
 
     # Validate backend
-    if backend not in ["surya", "paddleocr-vl", "olmocr"]:
+    if backend not in ["surya", "paddleocr-vl"]:
         return jsonify({"error": f"Unknown backend: {backend}"}), 400
 
     suffix = Path(file.filename).suffix.lower()
-
-    # OlmOCR only supports PDF files
-    if backend == "olmocr" and suffix != '.pdf':
-        return jsonify({"error": "OlmOCR only supports PDF files"}), 400
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         file.save(tmp.name)
@@ -700,77 +517,38 @@ def ocr():
     try:
         start_time = time.time()
 
-        # Handle OlmOCR separately - it processes PDFs directly
-        if backend == "olmocr":
-            print(f"Processing PDF: {file.filename} (backend: olmocr)")
-            doc = fitz.open(str(tmp_path))
-            total_pages = len(doc)
-            doc.close()
-
-            pages = []
-            for page_idx in range(total_pages):
-                page_num = page_idx + 1  # OlmOCR uses 1-indexed pages
-                print(f"  Processing page {page_num}/{total_pages}...")
-
-                markdown_content = process_pdf_page_olmocr(tmp_path, page_num)
-
-                page_data = {
-                    "index": page_idx,
-                    "markdown": markdown_content,
-                    "images": []
-                }
-
-                # For OlmOCR, optionally include page image
-                if include_images:
-                    img_id = f"page_{page_num}_img"
-                    # Render page for image inclusion
-                    doc = fitz.open(str(tmp_path))
-                    page = doc.load_page(page_idx)
-                    mat = fitz.Matrix(200 / 72, 200 / 72)
-                    pix = page.get_pixmap(matrix=mat)
-                    img_data = pix.tobytes("png")
-                    doc.close()
-                    img_base64 = base64.b64encode(img_data).decode('utf-8')
-                    page_data["images"].append({
-                        "id": img_id,
-                        "image_base64": f"data:image/png;base64,{img_base64}"
-                    })
-
-                pages.append(page_data)
+        if suffix == '.pdf':
+            print(f"Processing PDF: {file.filename} (backend: {backend})")
+            images = pdf_to_images(tmp_path)
+        elif suffix in ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tiff']:
+            print(f"Processing image: {file.filename} (backend: {backend})")
+            images = [Image.open(tmp_path).convert('RGB')]
         else:
-            # Standard processing for Surya/PaddleOCR
-            if suffix == '.pdf':
-                print(f"Processing PDF: {file.filename} (backend: {backend})")
-                images = pdf_to_images(tmp_path)
-            elif suffix in ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tiff']:
-                print(f"Processing image: {file.filename} (backend: {backend})")
-                images = [Image.open(tmp_path).convert('RGB')]
-            else:
-                return jsonify({"error": f"Unsupported file type: {suffix}"}), 400
+            return jsonify({"error": f"Unsupported file type: {suffix}"}), 400
 
-            pages = []
-            for page_idx, img in enumerate(images):
-                print(f"  Processing page {page_idx + 1}/{len(images)}...")
+        pages = []
+        for page_idx, img in enumerate(images):
+            print(f"  Processing page {page_idx + 1}/{len(images)}...")
 
-                markdown_content = process_image(img, backend=backend)
+            markdown_content = process_image(img, backend=backend)
 
-                page_data = {
-                    "index": page_idx,
-                    "markdown": markdown_content,
-                    "images": []
-                }
+            page_data = {
+                "index": page_idx,
+                "markdown": markdown_content,
+                "images": []
+            }
 
-                if include_images:
-                    img_id = f"page_{page_idx + 1}_img"
-                    img_base64 = image_to_base64(img.convert('RGB'), "PNG")
-                    page_data["images"].append({
-                        "id": img_id,
-                        "image_base64": f"data:image/png;base64,{img_base64}"
-                    })
-                    if f"![" not in page_data["markdown"]:
-                        page_data["markdown"] = f"![{img_id}]({img_id})\n\n{page_data['markdown']}"
+            if include_images:
+                img_id = f"page_{page_idx + 1}_img"
+                img_base64 = image_to_base64(img.convert('RGB'), "PNG")
+                page_data["images"].append({
+                    "id": img_id,
+                    "image_base64": f"data:image/png;base64,{img_base64}"
+                })
+                if f"![" not in page_data["markdown"]:
+                    page_data["markdown"] = f"![{img_id}]({img_id})\n\n{page_data['markdown']}"
 
-                pages.append(page_data)
+            pages.append(page_data)
 
         processing_time = time.time() - start_time
         print(f"OCR completed in {processing_time:.2f} seconds for {len(pages)} pages")
@@ -812,14 +590,10 @@ def ocr_stream():
     backend = request.form.get('backend', current_backend)
 
     # Validate backend
-    if backend not in ["surya", "paddleocr-vl", "olmocr"]:
+    if backend not in ["surya", "paddleocr-vl"]:
         return jsonify({"error": f"Unknown backend: {backend}"}), 400
 
     suffix = Path(file.filename).suffix.lower()
-
-    # OlmOCR only supports PDF files
-    if backend == "olmocr" and suffix != '.pdf':
-        return jsonify({"error": "OlmOCR only supports PDF files"}), 400
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         file.save(tmp.name)
@@ -831,110 +605,57 @@ def ocr_stream():
 
             yield json.dumps({"type": "status", "message": "Loading file"}) + "\n"
 
-            # Handle OlmOCR separately - it processes PDFs directly
-            if backend == "olmocr":
-                print(f"Processing PDF: {file.filename} (backend: olmocr)")
-                yield json.dumps({"type": "status", "message": "Preparing PDF for OlmOCR"}) + "\n"
-
-                doc = fitz.open(str(tmp_path))
-                total_pages = len(doc)
-                doc.close()
-
-                yield json.dumps({"type": "status", "message": f"Found {total_pages} pages"}) + "\n"
-
-                # Check if model needs to be loaded
-                if olmocr_model is None:
-                    yield json.dumps({"type": "status", "message": "Loading OlmOCR model (7B params)"}) + "\n"
-
-                pages = []
-                for page_idx in range(total_pages):
-                    page_num = page_idx + 1  # OlmOCR uses 1-indexed pages
-                    print(f"  Processing page {page_num}/{total_pages}...")
-
-                    yield json.dumps({
-                        "type": "progress",
-                        "page": page_num,
-                        "total": total_pages,
-                        "message": f"Processing page {page_num}/{total_pages}"
-                    }) + "\n"
-
-                    markdown_content = process_pdf_page_olmocr(tmp_path, page_num)
-
-                    page_data = {
-                        "index": page_idx,
-                        "markdown": markdown_content,
-                        "images": []
-                    }
-
-                    # For OlmOCR, optionally include page image
-                    if include_images:
-                        img_id = f"page_{page_num}_img"
-                        doc = fitz.open(str(tmp_path))
-                        page = doc.load_page(page_idx)
-                        mat = fitz.Matrix(200 / 72, 200 / 72)
-                        pix = page.get_pixmap(matrix=mat)
-                        img_data = pix.tobytes("png")
-                        doc.close()
-                        img_base64_data = base64.b64encode(img_data).decode('utf-8')
-                        page_data["images"].append({
-                            "id": img_id,
-                            "image_base64": f"data:image/png;base64,{img_base64_data}"
-                        })
-
-                    pages.append(page_data)
+            if suffix == '.pdf':
+                print(f"Processing PDF: {file.filename} (backend: {backend})")
+                yield json.dumps({"type": "status", "message": "Converting PDF to images"}) + "\n"
+                images = pdf_to_images(tmp_path)
+            elif suffix in ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tiff']:
+                print(f"Processing image: {file.filename} (backend: {backend})")
+                images = [Image.open(tmp_path).convert('RGB')]
             else:
-                # Standard processing for Surya/PaddleOCR
-                if suffix == '.pdf':
-                    print(f"Processing PDF: {file.filename} (backend: {backend})")
-                    yield json.dumps({"type": "status", "message": "Converting PDF to images"}) + "\n"
-                    images = pdf_to_images(tmp_path)
-                elif suffix in ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tiff']:
-                    print(f"Processing image: {file.filename} (backend: {backend})")
-                    images = [Image.open(tmp_path).convert('RGB')]
-                else:
-                    yield json.dumps({"type": "error", "message": f"Unsupported file type: {suffix}"}) + "\n"
-                    return
+                yield json.dumps({"type": "error", "message": f"Unsupported file type: {suffix}"}) + "\n"
+                return
 
-                total_pages = len(images)
-                yield json.dumps({"type": "status", "message": f"Found {total_pages} pages"}) + "\n"
+            total_pages = len(images)
+            yield json.dumps({"type": "status", "message": f"Found {total_pages} pages"}) + "\n"
 
-                # Check if model needs to be loaded
-                if backend == "paddleocr-vl" and paddleocr_model is None:
-                    yield json.dumps({"type": "status", "message": "Loading PaddleOCR-VL model"}) + "\n"
-                elif backend == "surya" and surya_model is None:
-                    yield json.dumps({"type": "status", "message": "Loading Surya OCR model"}) + "\n"
+            # Check if model needs to be loaded
+            if backend == "paddleocr-vl" and paddleocr_model is None:
+                yield json.dumps({"type": "status", "message": "Loading PaddleOCR-VL model"}) + "\n"
+            elif backend == "surya" and surya_model is None:
+                yield json.dumps({"type": "status", "message": "Loading Surya OCR model"}) + "\n"
 
-                pages = []
-                for page_idx, img in enumerate(images):
-                    page_num = page_idx + 1
-                    print(f"  Processing page {page_num}/{total_pages}...")
+            pages = []
+            for page_idx, img in enumerate(images):
+                page_num = page_idx + 1
+                print(f"  Processing page {page_num}/{total_pages}...")
 
-                    yield json.dumps({
-                        "type": "progress",
-                        "page": page_num,
-                        "total": total_pages,
-                        "message": f"Processing page {page_num}/{total_pages}"
-                    }) + "\n"
+                yield json.dumps({
+                    "type": "progress",
+                    "page": page_num,
+                    "total": total_pages,
+                    "message": f"Processing page {page_num}/{total_pages}"
+                }) + "\n"
 
-                    markdown_content = process_image(img, backend=backend)
+                markdown_content = process_image(img, backend=backend)
 
-                    page_data = {
-                        "index": page_idx,
-                        "markdown": markdown_content,
-                        "images": []
-                    }
+                page_data = {
+                    "index": page_idx,
+                    "markdown": markdown_content,
+                    "images": []
+                }
 
-                    if include_images:
-                        img_id = f"page_{page_num}_img"
-                        img_base64 = image_to_base64(img.convert('RGB'), "PNG")
-                        page_data["images"].append({
-                            "id": img_id,
-                            "image_base64": f"data:image/png;base64,{img_base64}"
-                        })
-                        if f"![" not in page_data["markdown"]:
-                            page_data["markdown"] = f"![{img_id}]({img_id})\n\n{page_data['markdown']}"
+                if include_images:
+                    img_id = f"page_{page_num}_img"
+                    img_base64 = image_to_base64(img.convert('RGB'), "PNG")
+                    page_data["images"].append({
+                        "id": img_id,
+                        "image_base64": f"data:image/png;base64,{img_base64}"
+                    })
+                    if f"![" not in page_data["markdown"]:
+                        page_data["markdown"] = f"![{img_id}]({img_id})\n\n{page_data['markdown']}"
 
-                    pages.append(page_data)
+                pages.append(page_data)
 
             processing_time = time.time() - start_time
             print(f"OCR completed in {processing_time:.2f} seconds for {len(pages)} pages")
@@ -966,7 +687,6 @@ def ocr_image():
     """
     Process a single image with OCR.
     Accepts base64-encoded image data in JSON.
-    Note: OlmOCR only supports PDF files, not individual images.
     """
     data = request.get_json()
     if not data or 'image' not in data:
@@ -975,9 +695,7 @@ def ocr_image():
     image_data = data['image']
     backend = data.get('backend', current_backend)
 
-    # Validate backend (olmocr not supported for single images)
-    if backend == "olmocr":
-        return jsonify({"error": "OlmOCR only supports PDF files, not individual images"}), 400
+    # Validate backend
     if backend not in ["surya", "paddleocr-vl"]:
         return jsonify({"error": f"Unknown backend: {backend}"}), 400
 
@@ -1011,7 +729,7 @@ if __name__ == '__main__':
     debug = os.getenv('DEBUG', 'false').lower() == 'true'
 
     print(f"Starting OCR server on {host}:{port}")
-    print(f"Available backends: Surya OCR, PaddleOCR-VL, OlmOCR")
+    print(f"Available backends: Surya OCR, PaddleOCR-VL")
     print(f"Default backend: {DEFAULT_BACKEND}")
     print(f"Idle timeout: {IDLE_TIMEOUT} seconds")
     print(f"Device: {DEVICE}")
