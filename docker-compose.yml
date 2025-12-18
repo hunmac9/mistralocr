@@ -42,7 +42,8 @@ services:
       - ocr-network
 
     # Override the default CMD:
-    command: ["gunicorn", "--bind", "0.0.0.0:${FLASK_PORT:-5009}", "--timeout", "300", "app:app"]
+    # Note: CPU OCR is slow (~2 min/page), so we need a long timeout
+    command: ["gunicorn", "--bind", "0.0.0.0:${FLASK_PORT:-5009}", "--timeout", "600", "app:app"]
 
   # Local OCR service - Surya OCR only (CPU mode)
   local-ocr:
