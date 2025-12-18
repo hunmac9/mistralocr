@@ -28,6 +28,7 @@
         <span class="toggle-label">Surya</span>
         <span class="toggle-status {% if local_ocr_available %}on{% elif local_ocr_auto_start %}idle{% else %}off{% endif %}"></span>
       </button>
+      {% if 'paddleocr-vl' in local_ocr_models %}
       <button
         type="button"
         class="toggle-btn"
@@ -38,6 +39,7 @@
         <span class="toggle-label">PaddleOCR</span>
         <span class="toggle-status {% if local_ocr_available %}on{% elif local_ocr_auto_start %}idle{% else %}off{% endif %}"></span>
       </button>
+      {% endif %}
       {% if has_mistral_key %}
       <button
         type="button"

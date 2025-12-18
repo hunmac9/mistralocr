@@ -99,10 +99,12 @@ LOCAL_OCR_IDLE_TIMEOUT = int(os.getenv('LOCAL_OCR_IDLE_TIMEOUT', '300'))
 LOCAL_OCR_AUTO_START = os.getenv('LOCAL_OCR_AUTO_START', 'true').lower() == 'true'
 LOCAL_OCR_DOCKER_IMAGE = os.getenv('LOCAL_OCR_DOCKER_IMAGE', 'mistralocr-local-ocr:latest')
 LOCAL_OCR_CONTAINER_NAME = os.getenv('LOCAL_OCR_CONTAINER_NAME', 'mistralocr-local-ocr')
+# Available local OCR models - comma-separated list (e.g., "surya" or "surya,paddleocr-vl")
+LOCAL_OCR_MODELS = [m.strip() for m in os.getenv('LOCAL_OCR_MODELS', 'surya').split(',')]
 
 print(f"OCR Backend: {OCR_BACKEND}")
 print(f"Local OCR URL: {LOCAL_OCR_URL}")
-print(f"Local OCR Models: Surya, PaddleOCR-VL")
+print(f"Local OCR Models: {', '.join(LOCAL_OCR_MODELS)}")
 print(f"Local OCR Auto-Start: {LOCAL_OCR_AUTO_START}")
 print(f"Local OCR Idle Timeout: {LOCAL_OCR_IDLE_TIMEOUT}s")
 
@@ -523,6 +525,7 @@ def index():
         ocr_backend=OCR_BACKEND,
         local_ocr_available=local_ocr_available,
         local_ocr_auto_start=LOCAL_OCR_AUTO_START,
+        local_ocr_models=LOCAL_OCR_MODELS,
         has_mistral_key=bool(os.getenv("MISTRAL_API_KEY")),
     )
 

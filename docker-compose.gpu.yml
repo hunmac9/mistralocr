@@ -22,6 +22,7 @@ services:
       LOCAL_OCR_URL: http://local-ocr:8000
       LOCAL_OCR_IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
       LOCAL_OCR_AUTO_START: "false"
+      LOCAL_OCR_MODELS: "surya,paddleocr-vl"  # GPU mode supports both
     depends_on:
       local-ocr:
         condition: service_healthy

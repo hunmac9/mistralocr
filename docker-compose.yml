@@ -33,6 +33,7 @@ services:
       # Local OCR settings
       LOCAL_OCR_IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
       LOCAL_OCR_AUTO_START: "false"  # Container managed by compose, not auto-started
+      LOCAL_OCR_MODELS: "surya"  # CPU mode only supports Surya
 
     depends_on:
       local-ocr:
@@ -43,7 +44,7 @@ services:
     # Override the default CMD:
     command: ["gunicorn", "--bind", "0.0.0.0:${FLASK_PORT:-5009}", "--timeout", "300", "app:app"]
 
-  # Local OCR service - Surya OCR + PaddleOCR-VL
+  # Local OCR service - Surya OCR only (CPU mode)
   local-ocr:
     build:
       context: ./local_ocr
@@ -51,7 +52,7 @@ services:
     environment:
       # Idle timeout in seconds (model unloads after this period of inactivity)
       IDLE_TIMEOUT: ${LOCAL_OCR_IDLE_TIMEOUT:-300}
-      OCR_BACKEND: ${OCR_BACKEND:-surya}  # "surya" or "paddleocr-vl"
+      OCR_BACKEND: surya  # CPU mode only supports Surya
       PORT: 8000
       HOST: 0.0.0.0
     volumes:
